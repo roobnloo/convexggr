@@ -21,17 +21,22 @@ generate_data <- function(n, p, q, qe = 5, ve = 0.01, sg = 125) {
   covariates[cov_disc_idx] <- map(seq_len(q/2), ~ sample(0:1, n, replace = T))
   covariates[-cov_disc_idx] <- map(seq_len(q/2), ~ runif(n))
   names(covariates) <- paste0("u", seq_len(q), sep = "")
-  covariates <- as_tibble(covariates)
+  covariates <- covariates |>
+                  unlist() |>
+                  matrix(nrow = n, ncol = q)
 
   # Generate the p responses
   generate_response <- function(i) {
     mvn_params <- get_mvn_params(i, cov_nz_idx, covariates, gamma_mx, b_mxs)
     response <- rMVNormP(1, mvn_params$mean_vec, mvn_params$prec_mx)
+    dim(response) <- NULL
     return(response)
   }
   responses <- map(seq_len(n), generate_response) |>
                 transpose() |>
-                map(unlist)
+                map(unlist) |>
+                unlist() |>
+                matrix(nrow = n, ncol = p)
   names(responses) <- paste0("x", seq_len(p))
 
   # Bind p responses and q covariates into the result

@@ -22,8 +22,10 @@ beta_j0 <- seq(1, 5, length = 6)
 error_vec <- y_j - covariates %*% gamma_j - responses %*% b_j0 -
              test_itx_mx %*% beta_j0
 expected_error <- norm(error_vec, type = "F")^2 / (2 * n)
-test_error <- sq_error_loss(y_j, responses, covariates, gamma_j, c(b_j0, beta_j0))
+test_error <- compute_residual(y_j, responses, covariates,
+                               gamma_j, c(b_j0, beta_j0)) |>
+                sq_error_loss()
 
-assert_that(are_equal(expected_error, 0))
+assert_that(are_equal(expected_error, test_error))
 
 print("All tests passed!")

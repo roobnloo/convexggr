@@ -11,11 +11,11 @@ convex_ggr <- function(y, responses, covariates, lambda, alpha = 0.5,
                        beta_init = NULL,
                        max_iter = 1000,
                        tol = 1e-5) {
-  # stopifnot(is.matrix(responses),
-  #           is.matrix(covariates),
-  #           nrow(responses) == nrow(covariates),
-  #           length(y) == nrow(covariates),
-  #           length(lambda == 2))
+  stopifnot(is.matrix(responses),
+            is.matrix(covariates),
+            nrow(responses) == nrow(covariates),
+            length(y) == nrow(covariates),
+            length(lambda == 2))
   n <- nrow(responses)
   d <- ncol(responses) + 1
   p <- ncol(covariates)
@@ -46,23 +46,28 @@ convex_ggr <- function(y, responses, covariates, lambda, alpha = 0.5,
     beta_j[seq_len(d-1)] <- result_b0$b0_j
     r_j <- result_b0$full_resid
 
+    # print(paste("Iteration:", i))
+    # browser()
     for (h in seq_len(p)) {
       result_bh <- update_bh(beta_j[h * (d - 1) + seq_len(d-1)], r_j,
                              covariates[, h], responses, lambda[2], alpha)
       beta_j[h * (d - 1) + seq_len(d-1)] <- result_bh$bh_j
       r_j <- result_bh$full_resid
+      # r_j <- compute_residual(y, responses, covariates, gamma_j, beta_j)
     }
+
     losses[i] <- sq_error_loss(r_j)
     if (is.na(losses[i])) {
       browser()
     }
     if (abs(losses[i] - losses[i - 1]) < tol) {
-      return(list(gamma_j = gamma_j,
-                  beta_j = beta_j,
-                  losses = losses,
-                  resid = r_j))
+      break
     }
   }
+  return(list(gamma_j = gamma_j,
+              beta_j = beta_j,
+              losses = losses,
+              resid = r_j))
 }
 
 update_bh <- function(bh_j, full_resid, covariate_h, responses, lambda0, alpha) {
@@ -70,23 +75,29 @@ update_bh <- function(bh_j, full_resid, covariate_h, responses, lambda0, alpha) 
             length(full_resid) == length(covariate_h))
 
   n <- nrow(responses)
-  browser()
+  # browser()
+
+  bh_j_new <- numeric(length(bh_j))
+  full_resid_new <- full_resid
+  bh_j_norm <- norm(bh_j, "2")
 
   for (k in seq_len(ncol(responses))) {
     element_wise <- responses[, k] * covariate_h
     partial_resid <- full_resid + bh_j[k] * element_wise
 
-    numerator <- sum(element_wise * partial_resid) |>
+    numerator <- sum(element_wise * partial_resid) / n |>
                    soft_threshold(alpha * lambda0)
-    denom <- norm(element_wise, "2")^2 / n +
-              (1 - alpha) * lambda0 / norm(bh_j, "2")
+    denom <- sum(element_wise^2) / n +
+              (1 - alpha) * lambda0 * sqrt(length(bh_j)) / bh_j_norm
 
-    bh_j[k] <- numerator / denom
+    bh_j_new[k] <- numerator / denom
 
     full_resid <- partial_resid - bh_j[k] * element_wise
+    full_resid_new <- full_resid_new + bh_j[k] * element_wise -
+                      bh_j_new[k] * element_wise
   }
 
-  list(bh_j = bh_j, full_resid = full_resid)
+  list(bh_j = bh_j_new, full_resid = full_resid_new)
 }
 
 update_b0 <- function(b0_j, full_resid, responses, lambda0, alpha) {

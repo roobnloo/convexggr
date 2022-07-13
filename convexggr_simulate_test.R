@@ -5,9 +5,9 @@ set.seed(104)
 d <- 25
 p <- 50
 num <- 200
-lambda = c(1, 5)
+lambda = c(0.1, 0.05)
 s <- generate_data(num, d, p)
 result <- convex_ggr(s$responses[, 1], s$responses[, -1], s$covariates,
                      lambda = lambda, alpha = 0.5, gamma_init = rep(0.25, p),
-                     max_iter = 50)
+                     max_iter = 150)
 

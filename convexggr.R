@@ -51,32 +51,27 @@ convex_ggr <- function(y, responses, covariates, lambda, alpha = 0.5,
     beta_j[seq_len(d - 1)] <- result_b0$v
     r_j <- result_b0$full_resid
 
-    for(h in seq_len(p)) {
-      bh_idx <- h * (d - 1) + seq_len(d-1)
-      result_bh <- apply_L1_update(beta_j[bh_idx], r_j, responses,
-                                   lambda[2] * alpha)
-      beta_j[bh_idx] <- result_bh$v
+    for (h in seq_len(p)) {
+      bh_idx <- h * (d - 1) + seq_len(d - 1)
+      result_bh <- apply_sparsegl_update(beta_j[bh_idx],
+                                         r_j, covariates[, h], responses,
+                                         lambda[2], alpha)
+      beta_j[bh_idx] <- result_bh$bh_j
       r_j <- result_bh$full_resid
     }
 
-    # # print(paste("Iteration:", i))
-    # # browser()
-    # for (h in seq_len(p)) {
-    #   result_bh <- update_bh(beta_j[h * (d - 1) + seq_len(d-1)], r_j,
-    #                          covariates[, h], responses, lambda[2], alpha)
-    #   beta_j[h * (d - 1) + seq_len(d-1)] <- result_bh$bh_j
-    #   r_j <- result_bh$full_resid
-    #   # r_j <- compute_residual(y, responses, covariates, gamma_j, beta_j)
-    # }
-
     losses[i + 1] <- sq_error_loss(r_j)
     if (is.na(losses[i + 1]) | is.nan(losses[i + 1])) {
-      stop("NaN value encountered when computing L2 loss. Perhaps the loss exploded.")
+      stop("NaN value encountered when computing L2 loss.
+           Perhaps the loss exploded.")
     }
     if (abs(losses[i + 1] - losses[i]) < tol) {
       losses <- losses[seq_len(i + 1)]
       break
     }
+  }
+  if (length(losses) == max_iter + 1) {
+    warning("Maximum iterations exceeded!")
   }
   return(list(gamma_j = gamma_j,
               beta_j = beta_j,
@@ -84,13 +79,15 @@ convex_ggr <- function(y, responses, covariates, lambda, alpha = 0.5,
               resid = r_j))
 }
 
-update_bh <- function(bh_j, full_resid, covariate_h, responses, lambda0, alpha) {
+#' Apply the sparse group lasso penalty to encourage both element-wise
+#' and group-wise sparsity. The groups are encoded by the interaction between
+#' the covariates and the responses.
+#' @param bh_j the coefficient vector to be made group-wise and elt-wise sparse.
+apply_sparsegl_update <- function(bh_j, full_resid, covariate_h, responses,
+                                  lambda0, alpha) {
   stopifnot(length(full_resid) == nrow(responses),
             length(full_resid) == length(covariate_h))
-
   n <- nrow(responses)
-  # browser()
-
   bh_j_new <- numeric(length(bh_j))
   full_resid_new <- full_resid
   bh_j_norm <- norm(bh_j, "2")

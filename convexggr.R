@@ -15,11 +15,10 @@ convex_ggr <- function(y, responses, covariates, lambda, alpha = 0.5,
             is.matrix(covariates),
             nrow(responses) == nrow(covariates),
             length(y) == nrow(covariates),
-            length(lambda == 2))
+            length(lambda) == 2)
   n <- nrow(responses)
   d <- ncol(responses) + 1
   p <- ncol(covariates)
-  # W_j <- interaction_mx(responses, covariates)
 
   gamma_j <- gamma_init
   beta_j <- beta_init
@@ -33,34 +32,43 @@ convex_ggr <- function(y, responses, covariates, lambda, alpha = 0.5,
 
   r_j <- compute_residual(y, responses, covariates, gamma_j, beta_j)
 
-  losses <- numeric(max_iter)
+  losses <- numeric(max_iter + 1)
   losses[1] <- sq_error_loss(r_j)
 
-  for (i in seq_len(max_iter - 1) + 1) {
-    result_g <- update_gamma(gamma_j, r_j, covariates, lambda[1])
-    gamma_j <- result_g$gamma_j
+  for (i in seq_len(max_iter)) {
+    result_g <- apply_L1_update(gamma_j, r_j, covariates, lambda[1])
+    gamma_j <- result_g$v
     r_j <- result_g$full_resid
 
-    result_b0 <- update_b0(beta_j[seq_len(d-1)], r_j, responses,
-                           lambda[2], alpha)
-    beta_j[seq_len(d-1)] <- result_b0$b0_j
+    result_b0 <- apply_L1_update(beta_j[seq_len(d-1)], r_j, responses,
+                                 lambda[2] * alpha)
+    beta_j[seq_len(d - 1)] <- result_b0$v
     r_j <- result_b0$full_resid
 
-    # print(paste("Iteration:", i))
-    # browser()
-    for (h in seq_len(p)) {
-      result_bh <- update_bh(beta_j[h * (d - 1) + seq_len(d-1)], r_j,
-                             covariates[, h], responses, lambda[2], alpha)
-      beta_j[h * (d - 1) + seq_len(d-1)] <- result_bh$bh_j
+    for(h in seq_len(p)) {
+      bh_idx <- h * (d - 1) + seq_len(d-1)
+      result_bh <- apply_L1_update(beta_j[bh_idx], r_j, responses,
+                                   lambda[2] * alpha)
+      beta_j[bh_idx] <- result_bh$v
       r_j <- result_bh$full_resid
-      # r_j <- compute_residual(y, responses, covariates, gamma_j, beta_j)
     }
 
-    losses[i] <- sq_error_loss(r_j)
-    if (is.na(losses[i])) {
-      browser()
+    # # print(paste("Iteration:", i))
+    # # browser()
+    # for (h in seq_len(p)) {
+    #   result_bh <- update_bh(beta_j[h * (d - 1) + seq_len(d-1)], r_j,
+    #                          covariates[, h], responses, lambda[2], alpha)
+    #   beta_j[h * (d - 1) + seq_len(d-1)] <- result_bh$bh_j
+    #   r_j <- result_bh$full_resid
+    #   # r_j <- compute_residual(y, responses, covariates, gamma_j, beta_j)
+    # }
+
+    losses[i + 1] <- sq_error_loss(r_j)
+    if (is.na(losses[i + 1]) | is.nan(losses[i + 1])) {
+      stop("NaN value encountered when computing L2 loss. Perhaps the loss exploded.")
     }
-    if (abs(losses[i] - losses[i - 1]) < tol) {
+    if (abs(losses[i + 1] - losses[i]) < tol) {
+      losses <- losses[seq_len(i + 1)]
       break
     }
   }
@@ -100,37 +108,23 @@ update_bh <- function(bh_j, full_resid, covariate_h, responses, lambda0, alpha) 
   list(bh_j = bh_j_new, full_resid = full_resid_new)
 }
 
-update_b0 <- function(b0_j, full_resid, responses, lambda0, alpha) {
-  stopifnot(length(full_resid) == nrow(responses),
-            length(b0_j) == ncol(responses))
+#' Applies the coordinate-wise update for the L1 penalty
+#' This encourages element-wise sparsity on the vector.
+#' @param v the coefficient vector to be made sparse.
+#' @param lambda the penalty coefficient. Larger values mean more sparsity.
+#' @param design_mx design matrix which multiplies with coefficient vector v
+apply_L1_update <- function(v, full_resid, design_mx, lambda) {
+  stopifnot(length(full_resid) == nrow(design_mx),
+            length(v) == ncol(design_mx))
 
-  n <- nrow(responses)
-
-  for (k in seq_len(ncol(responses))) {
-    partial_resid <- full_resid + b0_j[k] * responses[, k]
-    b0_j[k] <- b0_j[k] + sum(responses[, k] * partial_resid) / n |>
-                  soft_threshold(alpha * lambda0)
-    full_resid <- partial_resid - b0_j[k] * responses[, k]
+  for (k in seq_along(v)) {
+    partial_resid <- full_resid + v[k] * design_mx[, k]
+    v[k] <- soft_threshold(v[k] + sum(design_mx[, k] * full_resid) / nrow(design_mx),
+                           lambda)
+    full_resid <- partial_resid - v[k] * design_mx[, k]
   }
 
-  list(b0_j = b0_j, full_resid = full_resid)
-}
-
-update_gamma <- function(gamma_j, full_resid, covariates, lambda1) {
-  stopifnot(length(full_resid) == nrow(covariates),
-            length(gamma_j) == ncol(covariates))
-
-  n <- nrow(covariates)
-
-  for (k in seq_len(ncol(covariates))) {
-    partial_resid <- full_resid + gamma_j[k] * covariates[, k]
-    gamma_j[k] <- soft_threshold(gamma_j[k] +
-                                   sum(covariates[, k] * partial_resid) / n,
-                                 lambda1)
-    full_resid <- partial_resid - gamma_j[k] * covariates[, k]
-  }
-
-  list(gamma_j = gamma_j, full_resid = full_resid)
+  list(v = v, full_resid = full_resid)
 }
 
 #' @return n x p(d-1) matrix representing interactions btw responses and covs
@@ -165,6 +159,7 @@ compute_residual <- function(y, responses, covariates, gamma_j, beta_j) {
 
 # Vectorized soft-threshold function
 soft_threshold <- function(x, lambda) {
+  stopifnot(length(lambda) == 1)
   sign(x) * pmax(abs(x) - lambda, 0)
 }
 

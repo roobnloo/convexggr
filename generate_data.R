@@ -8,7 +8,7 @@ library(igraph)
 #' @param ve Erdos-Renyi edge probability of covariate mxs
 #' @param sg number of nonzero mean matrix entries
 #' @return a n x (p + q) tibble representing a data set
-generate_data <- function(n, p, q, qe = 5, ve = 0.01, sg = 125) {
+generate_data <- function(n, p, q, qe = 5, ve = 0.01, sg = p * q * 0.1) {
   # Generate the true parameters, gamma and beta
   gamma_mx <- generate_mean_mx(p, q, sg)
   b_mxs <- generate_coef_mxs(p, qe)

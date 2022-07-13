@@ -2,8 +2,12 @@ source("convexggr.R")
 source("generate_data.R")
 
 set.seed(104)
-s <- generate_data(200, 25, 50)
+d <- 25
+p <- 50
+num <- 200
+lambda = c(1, 5)
+s <- generate_data(num, d, p)
 result <- convex_ggr(s$responses[, 1], s$responses[, -1], s$covariates,
-                     lambda = c(10, 20), alpha = 0.5, gamma_init = rep(0.25, 50),
-                     max_iter = 10)
+                     lambda = lambda, alpha = 0.5, gamma_init = rep(0.25, p),
+                     max_iter = 50)
 

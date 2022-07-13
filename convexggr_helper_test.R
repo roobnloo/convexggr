@@ -28,4 +28,16 @@ test_error <- compute_residual(y_j, responses, covariates,
 
 assert_that(are_equal(expected_error, test_error))
 
+## Test centering variables
+set.seed(100)
+centered <- center_vars(runif(n),
+                        matrix(runif(n * d), nrow = n, ncol = d),
+                        matrix(runif(n * p), nrow = n, ncol = p))
+sumsq <- function(t) sum(t^2)
+assert_that(isTRUE(all.equal(mean(centered$y), 0)))
+assert_that(isTRUE(all.equal(apply(centered$responses, 2, mean), rep(0, d))))
+assert_that(isTRUE(all.equal(apply(centered$responses, 2, sumsq), rep(n, d))))
+assert_that(isTRUE(all.equal(apply(centered$covariates, 2, mean), rep(0, p))))
+assert_that(isTRUE(all.equal(apply(centered$covariates, 2, sumsq), rep(n, p))))
+
 print("All tests passed!")

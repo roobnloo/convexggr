@@ -16,9 +16,15 @@ convex_ggr <- function(y, responses, covariates, lambda, alpha = 0.5,
             nrow(responses) == nrow(covariates),
             length(y) == nrow(covariates),
             length(lambda) == 2)
+
   n <- nrow(responses)
   d <- ncol(responses) + 1
   p <- ncol(covariates)
+
+  centered <- center_vars(y, responses, covariates)
+  y <- centered$y
+  responses <- centered$responses
+  covariates <- centered$covariates
 
   gamma_j <- gamma_init
   beta_j <- beta_init
@@ -171,4 +177,23 @@ initialize_gamma <- function(p) {
 #' @return initialized q-vector beta_vec
 initialize_beta <- function(q) {
   runif(q)
+}
+
+#' @return variables with mean zero and sum-of-squares equal to nrow
+center_vars <- function(y, responses, covariates) {
+  stopifnot(length(y) == nrow(responses),
+            nrow(responses) == nrow(covariates))
+  n <- length(y)
+
+  scale_n <- function(t) {
+    sd(t) * sqrt((n - 1) / n)
+  }
+
+  y <- scale(y, scale = FALSE) # center, but do not scale y
+  responses <- scale(responses, scale = apply(responses, 2, scale_n))
+  covariates <- scale(covariates, scale = apply(covariates, 2, scale_n))
+
+  return(list(y = y,
+              responses = responses,
+              covariates = covariates))
 }

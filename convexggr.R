@@ -1,12 +1,49 @@
 library(tibble)
 library(purrr)
 
+#' @param reponses n x d matrix of responses
+#' @param covariates n x p matrix of covariates
+#' @param lambda 2 vector of penalty terms
+#' @param alpha value between 0 and 1 that determines sparse group lasso penalty
+convex_ggr <- function(responses, covariates, lambda, alpha = 0.5,
+                       gamma_init = NULL,
+                       beta_init = NULL,
+                       max_iter = 1000,
+                       tol = 1e-5) {
+  stopifnot(is.matrix(responses),
+            is.matrix(covariates),
+            nrow(responses) == nrow(covariates),
+            length(lambda) == 2)
+
+  result <- vector("list", length = ncol(responses))
+
+  # Initialize mean matrix, gamma
+  gamma_mx <- matrix(nrow = ncol(responses), ncol = ncol(covariates))
+
+  # Initialize covariate coef mxs, beta.
+  # Includes the population matrix, hence +1
+  beta_mxs <-  map(seq_len(ncol(covariates) + 1),
+                   ~ matrix(nrow = ncol(responses), ncol = ncol(responses)))
+
+  for (i in seq_along(result)) {
+    result[[i]] <- convex_ggr_component(responses[, i], responses[, -i],
+                                        covariates, lambda, alpha,
+                                        gamma_init, beta_init, max_iter, tol)
+    gamma_mx[i, ] <- result[[i]]$gamma_j
+    beta <- result[[i]]$beta_j
+
+    #(beta_mxs[[1]])[1, ] <- beta[1:]
+  }
+
+  return(result)
+}
+
 #' @param y n vector of the response to solve
 #' @param reponses n x (d-1) matrix of the other responses
 #' @param covariates n x p matrix of covariates
 #' @param lambda 2 vector of penalty terms
 #' @param alpha value between 0 and 1 that determines sparse group lasso penalty
-convex_ggr <- function(y, responses, covariates, lambda, alpha = 0.5,
+convex_ggr_component <- function(y, responses, covariates, lambda, alpha = 0.5,
                        gamma_init = NULL,
                        beta_init = NULL,
                        max_iter = 1000,
@@ -98,8 +135,10 @@ apply_sparsegl_update <- function(bh_j, full_resid, covariate_h, responses,
 
     numerator <- sum(element_wise * partial_resid) / n |>
                    soft_threshold(alpha * lambda0)
+
+    # it is suggested to multiply the second term in the denom by sqrt(length(bh_j))
     denom <- sum(element_wise^2) / n +
-              (1 - alpha) * lambda0 * sqrt(length(bh_j)) / bh_j_norm
+              (1 - alpha) * lambda0 / bh_j_norm
 
     bh_j_new[k] <- numerator / denom
 
@@ -193,4 +232,8 @@ center_vars <- function(y, responses, covariates) {
   return(list(y = y,
               responses = responses,
               covariates = covariates))
+}
+
+reshape <- function(beta_j) {
+
 }

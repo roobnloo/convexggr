@@ -1,0 +1,57 @@
+---
+title: "Untitled"
+author: "Robin Liu"
+date: '2022-06-28'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(104)
+source("convexggr.R")
+source("generate_data.R")
+library(tidyverse)
+```
+
+Generate data
+```{r}
+d <- 5
+p <- 10
+num <- 200
+s <- generate_data(num, d, p)
+```
+
+Run for entire path 
+```{r}
+run_component_reg <- function(reg) {
+  result <- convex_ggr_component(s$responses[, 1], s$responses[, -1], s$covariates,
+                   lambda = c(0, reg), alpha = 0.5, gamma_init = rep(0.25, p),
+                   max_iter = 150)
+  return(result$beta_j)
+}
+
+reg_path <- seq(0, 0.6, length = 10)
+result <- map(reg_path, ~ run_component_reg(.x)) |>
+  reduce(c)
+
+coords <- expand.grid(seq_len((p + 1) * (d - 1)), seq_along(reg_path))
+colnames(coords) <- c("x", "y")
+result <- cbind(result, coords) |> as_tibble()
+```
+
+Create heatmap for zero entires.
+```{r}
+gg <- ggplot(result) + 
+  geom_tile(mapping = aes(x = y, y = x, fill = result), color = "white")
+
+gg + geom_hline(aes(yintercept = 4.5)) +
+     scale_fill_gradient2() +
+     coord_fixed() +
+     theme_minimal()
+
+
+# for (i in seq_len(p)) {
+#   gg <- gg + geom_hline(aes(yintercept = 3))
+# }
+```
+

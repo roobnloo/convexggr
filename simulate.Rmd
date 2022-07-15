@@ -27,31 +27,41 @@ run_component_reg <- function(reg) {
   result <- convex_ggr_component(s$responses[, 1], s$responses[, -1], s$covariates,
                    lambda = c(0, reg), alpha = 0.5, gamma_init = rep(0.25, p),
                    max_iter = 150)
-  return(result$beta_j)
+  return(result)
 }
 
 reg_path <- seq(0, 0.6, length = 10)
-result <- map(reg_path, ~ run_component_reg(.x)) |>
+result <- map(reg_path, ~ run_component_reg(.x)$beta_j) |>
   reduce(c)
 
 coords <- expand.grid(seq_len((p + 1) * (d - 1)), seq_along(reg_path))
-colnames(coords) <- c("x", "y")
+colnames(coords) <- c("beta", "iteration")
 result <- cbind(result, coords) |> as_tibble()
 ```
 
-Create heatmap for zero entires.
+Create heatmap for zero entries.
 ```{r}
 gg <- ggplot(result) + 
-  geom_tile(mapping = aes(x = y, y = x, fill = result), color = "white")
+  geom_tile(mapping = aes(x = iteration, y = beta, fill = result), color = "white")
 
-gg + geom_hline(aes(yintercept = 4.5)) +
-     scale_fill_gradient2() +
+for (i in seq_len(p)) {
+  gg <- gg + geom_hline(aes_(yintercept = i * (d-1) + 0.5))
+}
+  
+gg + scale_fill_gradient2() +
      coord_fixed() +
      theme_minimal()
+```
 
+## Plot loss
+```{r}
+loss_result <- run_component_reg(0.2)
+```
 
-# for (i in seq_len(p)) {
-#   gg <- gg + geom_hline(aes(yintercept = 3))
-# }
+```{r}
+loss_df <- as_tibble(cbind(seq_along(loss_result$losses), loss_result$losses))
+colnames(loss_df) <- c("iteration", "loss")
+ggplot(loss_df) +
+  geom_line(aes(x = iteration, y = loss))
 ```
 

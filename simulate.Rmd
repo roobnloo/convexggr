@@ -62,6 +62,7 @@ loss_result <- run_component_reg(0.2)
 loss_df <- as_tibble(cbind(seq_along(loss_result$losses), loss_result$losses))
 colnames(loss_df) <- c("iteration", "loss")
 ggplot(loss_df) +
-  geom_line(aes(x = iteration, y = loss))
+  geom_line(aes(x = iteration, y = loss)) +
+  scale_y_log10()
 ```
 

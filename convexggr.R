@@ -15,27 +15,40 @@ convex_ggr <- function(responses, covariates, lambda, alpha = 0.5,
             nrow(responses) == nrow(covariates),
             length(lambda) == 2)
 
-  result <- vector("list", length = ncol(responses))
+  d <- ncol(responses)
+  p <- ncol(covariates)
 
   # Initialize mean matrix, gamma
-  gamma_mx <- matrix(nrow = ncol(responses), ncol = ncol(covariates))
+  gamma_mx <- matrix(nrow = d, ncol = p)
 
   # Initialize covariate coef mxs, beta.
   # Includes the population matrix, hence +1
-  beta_mxs <-  map(seq_len(ncol(covariates) + 1),
-                   ~ matrix(nrow = ncol(responses), ncol = ncol(responses)))
+  beta_mxs <-  map(seq_len(p + 1),
+                   ~ matrix(nrow = d, ncol = d))
 
   for (i in seq_along(result)) {
-    result[[i]] <- convex_ggr_component(responses[, i], responses[, -i],
+    result <- convex_ggr_component(responses[, i], responses[, -i],
                                         covariates, lambda, alpha,
                                         gamma_init, beta_init, max_iter, tol)
-    gamma_mx[i, ] <- result[[i]]$gamma_j
-    beta <- result[[i]]$beta_j
+    gamma_mx[i, ] <- result$gamma_j
+    beta <- result$beta_j
 
-    #(beta_mxs[[1]])[1, ] <- beta[1:]
+    for (h in seq_len(p + 1)) {
+      bh_idx <- (h - 1) * (d - 1) + seq_len(d - 1)
+      (beta_mxs[[h]])[i, ] <- beta[bh_idx]
+    }
   }
 
-  return(result)
+  for (h in seq_len(p + 1)) {
+    beta_mxs[[h]] <- symmetrize(beta_mxs[[h]])
+  }
+
+  return(list(gamma_mx = gamma_mx, beta_mxs = beta_mxs))
+}
+
+# TODO
+symmetrize <- function(mx) {
+  mx
 }
 
 #' @param y n vector of the response to solve

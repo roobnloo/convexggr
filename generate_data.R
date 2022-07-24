@@ -4,10 +4,12 @@ library(igraph)
 #' @param n number of observations
 #' @param p number of responses
 #' @param q number of covariates
-#' @param qe number of non-zero covariates
+#' @param qe number of covariates with non-zero effects
 #' @param ve Erdos-Renyi edge probability of covariate mxs
 #' @param sg number of nonzero mean matrix entries
-#' @return a n x (p + q) tibble representing a data set
+#' @return a n x p matrix of responses, n x q matrix of covariates,
+#' gamma matrix determining the mean, b matrices determining the precision mx,
+#' and indices of the covariates with non-zero effects.
 generate_data <- function(n, p, q, qe = 5, ve = 0.01, sg = p * q * 0.1) {
   # Generate the true parameters, gamma and beta
   gamma_mx <- generate_mean_mx(p, q, sg)
@@ -15,15 +17,13 @@ generate_data <- function(n, p, q, qe = 5, ve = 0.01, sg = p * q * 0.1) {
 
   # Generate the q covariates
   cov_idx <- seq_len(q)
-  cov_nz_idx <- sort(sample(cov_idx, qe)) # index of non-zero covs, qe total
-  cov_disc_idx <- sort(sample(cov_idx, q/2)) # index of discrete covs
+  cov_nz_idx <- sort(sample(cov_idx, qe)) # indices of non-zero effect covs
+  cov_disc_idx <- sort(sample(cov_idx, q/2)) # indices of discrete covs
   covariates <- vector(mode = "list", length = q)
   covariates[cov_disc_idx] <- map(seq_len(q/2), ~ sample(0:1, n, replace = T))
   covariates[-cov_disc_idx] <- map(seq_len(q/2), ~ runif(n))
-  names(covariates) <- paste0("u", seq_len(q), sep = "")
-  covariates <- covariates |>
-                  unlist() |>
-                  matrix(nrow = n, ncol = q)
+  covariates <- matrix(unlist(covariates), nrow = n, ncol = q)
+  colnames(covariates) <- paste0("u", seq_len(q), sep = "")
 
   # Generate the p responses
   generate_response <- function(i) {
@@ -33,11 +33,9 @@ generate_data <- function(n, p, q, qe = 5, ve = 0.01, sg = p * q * 0.1) {
     return(response)
   }
   responses <- map(seq_len(n), generate_response) |>
-                transpose() |>
-                map(unlist) |>
                 unlist() |>
-                matrix(nrow = n, ncol = p)
-  names(responses) <- paste0("x", seq_len(p))
+                matrix(nrow = n, ncol = p, byrow = T)
+  colnames(responses) <- paste0("x", seq_len(p))
 
   # Bind p responses and q covariates into the result
   result <- list(responses = responses,

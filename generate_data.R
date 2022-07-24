@@ -11,12 +11,12 @@ library(igraph)
 generate_data <- function(n, p, q, qe = 5, ve = 0.01, sg = p * q * 0.1) {
   # Generate the true parameters, gamma and beta
   gamma_mx <- generate_mean_mx(p, q, sg)
-  b_mxs <- generate_coef_mxs(p, qe)
+  b_mxs <- generate_coef_mxs(p, qe, ve)
 
   # Generate the q covariates
   cov_idx <- seq_len(q)
-  cov_nz_idx <- sample(cov_idx, qe) # index of non-zero covs, qe total
-  cov_disc_idx <- sample(cov_idx, q/2) # index of discrete covs
+  cov_nz_idx <- sort(sample(cov_idx, qe)) # index of non-zero covs, qe total
+  cov_disc_idx <- sort(sample(cov_idx, q/2)) # index of discrete covs
   covariates <- vector(mode = "list", length = q)
   covariates[cov_disc_idx] <- map(seq_len(q/2), ~ sample(0:1, n, replace = T))
   covariates[-cov_disc_idx] <- map(seq_len(q/2), ~ runif(n))
@@ -109,7 +109,7 @@ generate_cov_coef_mxs <- function(p, qe, ve = 0.01) {
 # Each matrix is normalized to be symmetric and diagonally dominant.
 generate_coef_mxs <- function(p, qe, ve = 0.01) {
   b0_mx <- generate_pop_coef_mx(p)
-  b_mxs <- generate_cov_coef_mxs(p, qe)
+  b_mxs <- generate_cov_coef_mxs(p, qe, ve)
   result <- c(list(b0_mx), b_mxs)
 
   # Normalization for diagonal dominance

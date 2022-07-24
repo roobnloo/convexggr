@@ -40,4 +40,7 @@ assert_that(isTRUE(all.equal(apply(centered$responses, 2, sumsq), rep(n, d))))
 assert_that(isTRUE(all.equal(apply(centered$covariates, 2, mean), rep(0, p))))
 assert_that(isTRUE(all.equal(apply(centered$covariates, 2, sumsq), rep(n, p))))
 
+## Test symmetrize
+mx <- matrix(1:16, 4, 4)
+assert_that(isSymmetric(symmetrize(mx)))
 print("All tests passed!")

@@ -7,7 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-set.seed(104)
+set.seed(101)
 source("convexggr.R")
 source("generate_data.R")
 library(tidyverse)
@@ -18,7 +18,7 @@ Generate data
 d <- 5
 p <- 10
 num <- 200
-s <- generate_data(num, d, p)
+s <- generate_data(num, d, p, ve=0.2)
 ```
 
 Run for entire path 
@@ -64,5 +64,70 @@ colnames(loss_df) <- c("iteration", "loss")
 ggplot(loss_df) +
   geom_line(aes(x = iteration, y = loss)) +
   scale_y_log10()
+```
+
+# Full algorithm
+```{r}
+full_result <- convex_ggr(s$responses, s$covariates,
+                 lambda = c(.1, 1.3), alpha = 0.5, gamma_init = rep(0.25, p),
+                 max_iter = 150)
+
+mean_error <- 0
+prec_error <- 0
+for (i in seq_len(num)) {
+  ests <- est_mvn_params(s$covariates[i, ], full_result)
+  true_mean_vec <- s$gamma_mx %*% s$covariates[i, ]
+  mean_error <- mean_error + sum((ests$mean_vec -  true_mean_vec)^2)
+  
+  true_prec_mx <- Map(`*`,  s$b_mxs,
+                 c(1, as.numeric(s$covariates[i, s$cov_nz_idx])))
+  true_prec_mx <- Reduce(`+`, true_prec_mx)
+  diff_mx <- true_prec_mx - ests$prec_mx
+  prec_error <- prec_error + sum(diff_mx^2) - sum(diag(diff_mx)^2)
+}
+mean_error / num
+prec_error / num
+```
+
+Visualizing the zero-pattern of the mean matrix $\Gamma$.
+```{r}
+gamma_tbl <- as_tibble(cbind(expand.grid(rev(seq_len(d)), seq_len(p)),
+                             c(full_result$gamma_mx))) |>
+             setNames(c("row", "col", "value"))
+
+ggplot(gamma_tbl, mapping = aes(x = col, y = row, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2() +
+  coord_fixed() +
+  theme_minimal()
+```
+
+Visualizing the zero-pattern of the covariate coefficient matrix $\hat{\mathbf B}^{(0)}$.
+```{r}
+beta_viz <- function(beta_mx) {
+  beta0 <- as_tibble(cbind(expand.grid(rev(seq_len(d)), seq_len(d)),
+                           c(beta_mx))) |>
+           setNames(c("row", "col", "value"))
+ 
+  ggplot(beta0, mapping = aes(x = col, y = row, fill = value)) +
+    geom_tile(color = "white") +
+    scale_fill_gradient2() +
+    coord_fixed() +
+    theme_minimal()
+}
+```
+```{r}
+for(i in seq_along(full_result$beta_mxs)) {
+  print(beta_viz(full_result$beta_mxs[[i]]))
+}
+```
+
+
+Assess the error of the estimate.
+```{r}
+norm(s$gamma_mx - full_result$gamma_mx, "F")
+```
+```{r}
+s$b_mxs
 ```
 

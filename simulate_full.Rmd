@@ -1,0 +1,128 @@
+---
+title: "Untitled"
+author: "Robin Liu"
+date: '2022-06-28'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(100)
+source("convexggr.R")
+source("generate_data.R")
+library(tidyverse)
+```
+
+Generate data
+```{r}
+d <- 25
+p <- 50 
+num <- 200
+s <- generate_data(num, d, p)
+```
+
+```{r}
+gamma_viz <- function(result) {
+  gamma_tbl <- as_tibble(cbind(expand.grid(rev(seq_len(d)), seq_len(p)),
+                               c(result$gamma_mx))) |>
+               setNames(c("row", "col", "value"))
+  
+  ggplot(gamma_tbl, mapping = aes(x = col, y = row, fill = value)) +
+    geom_tile(color = "white") +
+    scale_fill_gradient2() +
+    coord_fixed() +
+    theme_minimal()
+}
+
+beta_viz <- function(beta_mx) {
+  beta0 <- as_tibble(cbind(expand.grid(rev(seq_len(d)), seq_len(d)),
+                           c(beta_mx))) |>
+           setNames(c("row", "col", "value"))
+ 
+  ggplot(beta0, mapping = aes(x = col, y = row, fill = value)) +
+    geom_tile(color = "white") +
+    scale_fill_gradient2() +
+    coord_fixed() +
+    theme_minimal()
+}
+```
+
+```{r}
+get_error <- function(full_result, s) {
+  mean_error <- 0
+  prec_error <- 0
+  for (i in seq_len(num)) {
+    ests <- est_mvn_params(s$covariates[i, ], full_result)
+    true_mean_vec <- s$gamma_mx %*% s$covariates[i, ]
+    mean_error <- mean_error + sum((ests$mean_vec -  true_mean_vec)^2)
+    
+    true_prec_mx <- Map(`*`,  s$b_mxs,
+                   c(1, as.numeric(s$covariates[i, s$cov_nz_idx])))
+    true_prec_mx <- Reduce(`+`, true_prec_mx)
+    diff_mx <- true_prec_mx - ests$prec_mx
+    prec_error <- prec_error + sum(diff_mx^2) - sum(diag(diff_mx)^2)
+  }
+ 
+  return(list(mean_error = mean_error / num,
+              prec_error = prec_error / num))
+}
+```
+
+Run for entire path 
+# Full algorithm
+```{r}
+# run <- function(lambda) {
+#   result <- convex_ggr(s$responses, s$covariates, lambda = c(0, lambda),
+#                        alpha = 0.5, gamma_init = rep(0.25, p), max_iter = 150)
+#   get_error(result, s)
+# }
+result_gam0 <- convex_ggr(s$responses, s$covariates, lambda = c(0, 0.3),
+                       alpha = 0.8, gamma_init = rep(0.25, p), max_iter = 150)
+
+result_alpha08 <- convex_ggr(s$responses, s$covariates, lambda = c(0.1, 0.3),
+                       alpha = 0.8, gamma_init = rep(0.25, p), max_iter = 150)
+
+result_alpha07 <- convex_ggr(s$responses, s$covariates, lambda = c(0.1, 0.3),
+                       alpha = 0.7, gamma_init = rep(0.25, p), max_iter = 150)
+
+result_alpha05 <- convex_ggr(s$responses, s$covariates, lambda = c(0.1, 0.3),
+                       alpha = 0.5, gamma_init = rep(0.25, p), max_iter = 150)
+
+result_alpha01 <- convex_ggr(s$responses, s$covariates, lambda = c(0.1, 0.3),
+                       alpha = 0.1, gamma_init = rep(0.25, p), max_iter = 150)
+
+# reg_path <- 0.5
+# result <- map(reg_path, ~ run(.x)$prec_error) |>
+#   reduce(c)
+```
+
+Visualizing the zero-pattern of the mean matrix $\Gamma$.
+```{r}
+gamma_viz(result_alpha08)
+```
+
+Visualizing the zero-pattern of the covariate coefficient matrix $\hat{\mathbf B}^{(0)}$.
+```{r}
+for(i in seq_along(result_alpha05$beta_mxs)) {
+  print(beta_viz(result_alpha05$beta_mxs[[i]]))
+}
+```
+
+
+```{r}
+for(i in seq_along(result_alpha01$beta_mxs)) {
+  print(beta_viz(result_alpha01$beta_mxs[[i]]))
+}
+```
+
+
+```{r}
+for(i in seq_along(s$b_mxs)) {
+  print(beta_viz(s$b_mxs[[i]]))
+}
+```
+
+```{r}
+s$cov_nz_idx
+```
+

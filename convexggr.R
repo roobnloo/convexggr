@@ -53,8 +53,9 @@ convex_ggr <- function(responses, covariates, lambda, alpha = 0.5,
 #' @return the mean vector and precision matrix after "undoing" the reparam
 est_mvn_params <- function(covariate, result) {
   theta_vec <- result$gamma_mx %*% covariate
-  theta_mx <- Map(`*`,  result$beta_mxs, c(1, as.numeric(covariate)))
-  theta_mx <- Reduce(`+`, theta_mx)
+  theta_mx <- map2(result$beta_mxs, c(1, as.numeric(covariate)), `*`) |>
+                 reduce(`+`)
+
   diag_prec <- diag(diag(result$beta_mxs[[1]]))
   prec_mx <- - diag_prec %*% theta_mx
   mean_vec <- solve(prec_mx) %*% diag_prec %*% theta_vec

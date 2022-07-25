@@ -49,10 +49,17 @@ generate_data <- function(n, p, q, qe = 5, ve = 0.01, sg = p * q * 0.1) {
 #' @param i index out of n observations
 #' @return mean vector and precision matrix for ith response
 get_mvn_params <- function(i, cov_nz_idx, covariates, gamma_mx, b_mxs) {
-  mean_vec <- gamma_mx %*% as.numeric(covariates[i, ])
-  prec_mx <- Map(`*`,  b_mxs,
-                 c(1, as.numeric(covariates[i, cov_nz_idx])))
-  prec_mx <- Reduce(`+`, prec_mx)
+
+  # Reparametrized mean vector
+  little_theta <- gamma_mx %*% as.numeric(covariates[i, ])
+
+  # Reparametrized precision matrix
+  big_theta <- map2(b_mxs, c(1, as.numeric(covariates[i, cov_nz_idx])), `*`) |>
+               reduce(`+`)
+
+  prec_mx <- -big_theta
+  diag(prec_mx) <- 1
+  mean_vec <- solve(prec_mx) %*% little_theta
 
   list(mean_vec = mean_vec, prec_mx = prec_mx)
 }
@@ -76,14 +83,14 @@ generate_coef <- function(num) {
 
 # Generate one p x p coef matrix for the population-level network
 # Underlying graph has scale-free power law node degree
-# Fix diagonal entries to 1
+# Fix diagonal entries to -1
 # Result is not normalized
 generate_pop_coef_mx <- function(p) {
   cov_el <- sample_fitness_pl(p, p, exponent.out = 2.5) |>
               as_edgelist()
   result <- matrix(0, p, p)
   result[cov_el] <- generate_coef(nrow(cov_el))
-  diag(result) <- 1
+  diag(result) <- 0
   return(result)
 }
 
@@ -91,13 +98,17 @@ generate_pop_coef_mx <- function(p) {
 # Underlying graph is ER with edge probability ve.
 # Fix diagonals to zero
 # Result is not normalized
-generate_cov_coef_mxs <- function(p, qe, ve = 0.01) {
+generate_cov_coef_mxs <- function(p, qe, ve) {
   create_mx <- function(dummy) {
     ntwk_cov <- erdos.renyi.game(p, ve, type = "gnp")
     cov_el <- as_edgelist(ntwk_cov)
     result <- matrix(0, p, p)
     result[cov_el] <- generate_coef(nrow(cov_el))
     diag(result) <- 0
+
+    if (all(result == 0)) {
+      return(create_mx(0))
+    }
     return(result)
   }
   lapply(seq_len(qe), create_mx)
@@ -105,17 +116,19 @@ generate_cov_coef_mxs <- function(p, qe, ve = 0.01) {
 
 # Generate a list of 1+q coef matrices, including the population-level mx
 # Each matrix is normalized to be symmetric and diagonally dominant.
-generate_coef_mxs <- function(p, qe, ve = 0.01) {
+generate_coef_mxs <- function(p, qe, ve) {
   b0_mx <- generate_pop_coef_mx(p)
   b_mxs <- generate_cov_coef_mxs(p, qe, ve)
   result <- c(list(b0_mx), b_mxs)
 
   # Normalization for diagonal dominance
-  normalize_j <- function(j) {
+  for (j in seq_len(p)) {
     normal_j <- sum(unlist(map(result, ~ sum(abs(.x[j, -j])))))
-
-    for (mx in result) {
-      mx[j, -j] <- mx[j, -j] / normal_j
+    if (isTRUE(all.equal(normal_j, 0))) {
+      next
+    }
+    for (k in seq_along(result)) {
+      result[[k]][j, -j] <- result[[k]][j, -j] / normal_j
     }
   }
 
@@ -124,8 +137,8 @@ generate_coef_mxs <- function(p, qe, ve = 0.01) {
     for (i in seq_len(p)) {
       for (j in seq_len(i-1)) {
         symm <- (result[[k]][i, j] + result[[k]][j, i]) / 2
-        result[[k]][i, j] <- symm
-        result[[k]][j, i] <- symm
+        result[[k]][i, j] <- -symm
+        result[[k]][j, i] <- -symm
       }
     }
   }

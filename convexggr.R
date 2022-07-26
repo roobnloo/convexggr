@@ -101,6 +101,7 @@ convex_ggr_component <- function(y, responses, covariates, lambda, alpha = 0.5,
             is.matrix(covariates),
             nrow(responses) == nrow(covariates),
             length(y) == nrow(covariates),
+            is.null(dim(lambda)),
             length(lambda) == 2)
 
   n <- nrow(responses)

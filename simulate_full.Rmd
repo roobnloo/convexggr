@@ -1,7 +1,6 @@
 ---
 title: "Untitled"
 author: "Robin Liu"
-date: '2022-06-28'
 output: html_document
 ---
 
@@ -22,9 +21,9 @@ s <- generate_data(num, d, p)
 ```
 
 ```{r}
-gamma_viz <- function(result) {
+gamma_viz <- function(gamma_mx) {
   gamma_tbl <- as_tibble(cbind(expand.grid(rev(seq_len(d)), seq_len(p)),
-                               c(result$gamma_mx))) |>
+                               c(gamma_mx))) |>
                setNames(c("row", "col", "value"))
   
   ggplot(gamma_tbl, mapping = aes(x = col, y = row, fill = value)) +
@@ -98,7 +97,7 @@ result_alpha01 <- convex_ggr(s$responses, s$covariates, lambda = c(0.1, 0.3),
 
 Visualizing the zero-pattern of the mean matrix $\Gamma$.
 ```{r}
-gamma_viz(result_alpha08)
+gamma_viz(result_alpha08$gamma_mx)
 ```
 
 Visualizing the zero-pattern of the covariate coefficient matrix $\hat{\mathbf B}^{(0)}$.

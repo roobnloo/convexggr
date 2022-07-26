@@ -1,0 +1,67 @@
+---
+title: "Untitled"
+author: "Robin Liu"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+set.seed(100)
+library(tidyverse)
+source("convexggr.R")
+source("generate_data.R")
+source("simulate_test_utils.R")
+```
+
+Generate data
+```{r}
+d <- 5
+p <- 10
+num <- 200
+s <- generate_data(num, d, p, qe = 5, ve = .5)
+#result <- convex_ggr(s$responses, s$covariates, lambda = c(0, 0.3), alpha = 0.8)
+```
+
+```{r}
+total <- 10 
+pen <- expand.grid(seq(0, 1, length = total), seq(0.01, 0.5, length = total))
+rates <- vector(length = total^2)
+
+i <- 1
+result <- vector("list", length = nrow(pen))
+for (row in seq_along(result)) {
+  result[[row]] <- convex_ggr(s$responses, s$covariates,
+                               lambda = c(0, pen[row, 2]),
+                               alpha = pen[row, 1])
+  tpr <- true_pos_rate(result[[row]]$beta_mxs, s$b_mxs, s$cov_nz_idx)
+  rates[i] <- tpr
+  i <- i + 1
+}
+```
+
+```{r}
+opt <- unlist(pen[which.max(rates), ])
+r <- convex_ggr(s$responses, s$covariates, lambda = opt[1:2], alpha = 0)
+```
+
+```{r}
+i <- 67
+beta_viz_result(i)
+pen[i,]
+```
+
+
+```{r}
+beta_viz_result <- function(r) {
+  for(i in seq_along(result[[r]]$beta_mxs)) {
+    print(beta_viz(result[[r]]$beta_mxs[[i]]))
+  }
+}
+```
+
+```{r}
+for(i in seq_along(s$b_mxs)) {
+  print(beta_viz(s$b_mxs[[i]]))
+}
+```
+

@@ -1,0 +1,43 @@
+---
+title: "Untitled"
+author: "Robin Liu"
+date: '2022-07-28'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("generate_data.R")
+source("cvxr_component.R")
+```
+
+```{r generate}
+set.seed(100)
+d <- 5
+p <- 10
+num <- 200
+lambda <- c(1, .1)
+alpha <- 0.5
+s <- generate_data(num, d, p, ve = 0.2)
+```
+
+```{r}
+gamma_j <- Variable(p)
+beta_j <- Variable((p + 1) * (d - 1))
+cvxr_result <- cggr_component_cvxr(s$responses[, 1], s$responses[, -1], s$covariates,
+                                   gamma_j, beta_j,
+                                   lambda = c(20, 0.1), alpha = alpha)
+cvxr_result$getValue(gamma_j)
+```
+
+```{r}
+my_result <- convex_ggr_component(s$responses[, 1], s$responses[, -1], s$covariates,
+                                  lambda = lambda, alpha = alpha,
+                                  max_iter = 1500)
+```
+
+```{r}
+my_result$gamma_j
+cvxr_result$getValue(gamma_j)
+```
+

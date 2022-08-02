@@ -1,3 +1,4 @@
+library(CVXR)
 source("convexggr.R")
 source("generate_data.R")
 
@@ -8,7 +9,8 @@ num <- 200
 lambda = c(0.1, .3)
 s <- generate_data(num, d, p)
 
-result <- convex_ggr(s$responses, s$covariates,
-                     lambda = lambda, alpha = 0.5,
-                     gamma_init = rep(0.25, p), max_iter = 150)
+# result <- convex_ggr(s$responses, s$covariates,
+#                      lambda = lambda, alpha = 0.5,
+#                      gamma_init = rep(0.25, p), max_iter = 150)
+
 

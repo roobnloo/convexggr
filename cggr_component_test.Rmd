@@ -22,13 +22,30 @@ s <- generate_data(num, d, p, ve = 0.2)
 ```
 
 ```{r}
+trials <- 10
+lambda_vals <- 10^seq(-2, log10(50), length = trials)
 gamma_j <- Variable(p)
 beta_j <- Variable((p + 1) * (d - 1))
-cvxr_result <- cggr_component_cvxr(s$responses[, 1], s$responses[, -1], s$covariates,
-                                   gamma_j, beta_j,
-                                   lambda = c(20, 0.1), alpha = alpha)
-cvxr_result$getValue(gamma_j)
+
+gamma_vals <-  matrix(NA, nrow = length(lambda_vals), ncol = p)
+opt_val <- vector(length = length(lambda_vals))
+
+for(i in seq_along(lambda_vals)) {
+  cvxr_result <- cggr_component_cvxr(s$responses[, 1], s$responses[, -1],
+                                     s$covariates, gamma_j, beta_j,
+                                     lambda = c(lambda_vals[i], 0.1), alpha = alpha)
+  gamma_vals[i, ] <- cvxr_result$getValue(gamma_j)
+  opt_val[i] <- cvxr_result$value
+}
 ```
+
+```{r}
+plot(0, 0, type = "n", main = "CVXR Regularization Path for CGGR",
+     xlab = "Log Lambda", ylab = "Coefficients",
+     ylim = c(-0.5, 0.5), xlim = c(-4, 4))
+matlines(log(lambda_vals), gamma_vals)
+```
+
 
 ```{r}
 my_result <- convex_ggr_component(s$responses[, 1], s$responses[, -1], s$covariates,
@@ -37,7 +54,21 @@ my_result <- convex_ggr_component(s$responses[, 1], s$responses[, -1], s$covaria
 ```
 
 ```{r}
-my_result$gamma_j
-cvxr_result$getValue(gamma_j)
+run_cggr <- function(lambda) {
+  cggr_result <- convex_ggr_component(s$responses[, 1], s$responses[, -1], s$covariates,
+                                  lambda = c(lambda, 0.1), alpha = alpha,
+                                  max_iter = 1500)
+  cggr_result$gamma_j
+}
+
+my_gamma_vals <- sapply(lambda_vals, run_cggr)
+```
+
+
+```{r}
+plot(0, 0, type = "n", main = "My Regularization Path for CGGR",
+     xlab = "Log Lambda", ylab = "Coefficients",
+     ylim = c(-0.5, 0.5), xlim = c(-4, 4))
+matlines(log(lambda_vals), t(my_gamma_vals))
 ```
 

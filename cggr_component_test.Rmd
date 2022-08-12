@@ -16,59 +16,153 @@ set.seed(100)
 d <- 5
 p <- 10
 num <- 200
-lambda <- c(1, .1)
-alpha <- 0.5
-s <- generate_data(num, d, p, ve = 0.2)
+#lambda <- c(1, 0)
+alpha <- 1 # 1 => lasso, 0 => group lasso
+s <- generate_data(num, d, p, ve = 0.3)
 ```
 
 ```{r}
+component <- 3
 trials <- 10
-lambda_vals <- 10^seq(-2, log10(50), length = trials)
+lambda_vals <- 10^seq(-2, log10(5), length = trials)
 gamma_j <- Variable(p)
 beta_j <- Variable((p + 1) * (d - 1))
 
+## Run CVXR
 gamma_vals <-  matrix(NA, nrow = length(lambda_vals), ncol = p)
-opt_val <- vector(length = length(lambda_vals))
+beta_vals <-  matrix(NA, nrow = length(lambda_vals), ncol = (p + 1) * (d - 1))
+opt_vals <- vector(length = length(lambda_vals))
 
 for(i in seq_along(lambda_vals)) {
-  cvxr_result <- cggr_component_cvxr(s$responses[, 1], s$responses[, -1],
+  cvxr_result <- cggr_component_cvxr(s$responses[, component], s$responses[, -component],
                                      s$covariates, gamma_j, beta_j,
-                                     lambda = c(lambda_vals[i], 0.1), alpha = alpha)
+                                     lambda = c(0.03, lambda_vals[i]), alpha = alpha)
   gamma_vals[i, ] <- cvxr_result$getValue(gamma_j)
-  opt_val[i] <- cvxr_result$value
+  beta_vals[i, ] <- cvxr_result$getValue(beta_j)
+  opt_vals[i] <- cvxr_result$value
+}
+```
+
+
+```{r}
+## Run my implementation
+my_gamma_vals <-  matrix(NA, nrow = length(lambda_vals), ncol = p)
+my_beta_vals <-  matrix(NA, nrow = length(lambda_vals), ncol = (p + 1) * (d - 1))
+my_opt_vals <- vector(length = length(lambda_vals))
+
+for(i in seq_along(lambda_vals)) {
+  cggr_result <- convex_ggr_component(s$responses[, component],
+                                      s$responses[, -component], s$covariates,
+                                  lambda = c(0.03, lambda_vals[i]), alpha = alpha,
+                                  max_iter = 1500)
+  my_gamma_vals[i, ] <- cggr_result$gamma_j
+  my_beta_vals[i, ] <- cggr_result$beta_j
+  my_opt_vals[i] <- cggr_result$obj_val
+}
+```
+
+
+```{r plot}
+xlim = c(-4, 2)
+ylim = c(-.2, .2)
+## Plot results
+for (k in c(0, seq_along(s$cov_nz_idx))) {
+  nz_idx <- s$cov_nz_idx[k]
+  if (k == 0) {
+    nz_idx <- 0
+  }
+  beta_idx <- nz_idx * (d-1) + seq_len(d-1)
+  par(mfrow=c(1, 2))
+  plot(0, 0, type = "n", main = "CVXR Reg Path",
+       xlab = "Log Lambda", ylab = "Coefficients",
+       ylim = ylim, xlim = xlim)
+  abline(h=0, col = "gray80")
+  matlines(log(lambda_vals), beta_vals[, beta_idx])
+  nonzero_idx <- which(s$b_mxs[[k + 1]][component, -component] != 0)
+  if (length(nonzero_idx) > 0) {
+    legend("topright", lty=nonzero_idx, col=nonzero_idx, legend = nonzero_idx)
+  }
+  
+  plot(0, 0, type = "n", main = "My Reg Path",
+       xlab = "Log Lambda", ylab = "Coefficients",
+       ylim = ylim, xlim = xlim)
+  abline(h=0, col = "gray80")
+  matlines(log(lambda_vals), my_beta_vals[, beta_idx])
+  if (length(nonzero_idx) > 0) {
+    legend("topright", lty=nonzero_idx, col=nonzero_idx, legend = nonzero_idx)
+  }
 }
 ```
 
 ```{r}
-plot(0, 0, type = "n", main = "CVXR Regularization Path for CGGR",
-     xlab = "Log Lambda", ylab = "Coefficients",
-     ylim = c(-0.5, 0.5), xlim = c(-4, 4))
-matlines(log(lambda_vals), gamma_vals)
-```
-
-
-```{r}
-my_result <- convex_ggr_component(s$responses[, 1], s$responses[, -1], s$covariates,
-                                  lambda = lambda, alpha = alpha,
-                                  max_iter = 1500)
-```
-
-```{r}
-run_cggr <- function(lambda) {
-  cggr_result <- convex_ggr_component(s$responses[, 1], s$responses[, -1], s$covariates,
-                                  lambda = c(lambda, 0.1), alpha = alpha,
-                                  max_iter = 1500)
-  cggr_result$gamma_j
+## Plot zero coef effects
+for (k in (1:p)[-s$cov_nz_idx]) {
+  beta_idx <- k * (d-1) + seq_len(d-1)
+  par(mfrow=c(1, 2))
+  plot(0, 0, type = "n", main = "CVXR Reg Path",
+       xlab = "Log Lambda", ylab = "Coefficients",
+       ylim = c(-0.2, 0.2), xlim = c(-4, 0))
+  abline(h=0, col = "gray80")
+  matlines(log(lambda_vals), beta_vals[, beta_idx])
+  
+  plot(0, 0, type = "n", main = "My Reg Path",
+       xlab = "Log Lambda", ylab = "Coefficients",
+       ylim = c(-0.2, 0.2), xlim = c(-4, 0))
+  abline(h=0, col = "gray80")
+  matlines(log(lambda_vals), my_beta_vals[, beta_idx])
 }
-
-my_gamma_vals <- sapply(lambda_vals, run_cggr)
 ```
 
 
 ```{r}
-plot(0, 0, type = "n", main = "My Regularization Path for CGGR",
-     xlab = "Log Lambda", ylab = "Coefficients",
-     ylim = c(-0.5, 0.5), xlim = c(-4, 4))
-matlines(log(lambda_vals), t(my_gamma_vals))
+gamma_j <- Variable(p)
+beta_j <- Variable((p + 1) * (d - 1))
+bench::mark(
+  cvxr_result <- cggr_component_cvxr(s$responses[, component],
+                                     s$responses[, -component],
+                                     s$covariates, gamma_j, beta_j,
+                                     lambda = c(0.03, 0.02), alpha = alpha)
+)
+# test_gamma_vals <- cvxr_result$getValue(gamma_j)
+# test_beta_vals <- cvxr_result$getValue(beta_j)
+# test_opt_vals <- cvxr_result$value
+test_opt_vals
 ```
 
+```{r}
+bench::mark(
+  cggr_result <- convex_ggr_component(s$responses[, component],
+                                      s$responses[, -component],
+                                      s$covariates,
+                                      lambda = c(0.03, 0.02), alpha = alpha)
+)
+# test_my_gamma_vals <- cggr_result$gamma_j
+# test_my_beta_vals <- cggr_result$beta_j
+# test_my_opt_vals <- cggr_result$obj_val
+test_my_opt_vals
+```
+
+```{r}
+centered <- center_vars(s$responses[, component],
+                        s$responses[, -component],
+                        s$covariates)
+```
+
+
+```{r}
+gj1 <- cvxr_result$getValue(gamma_j)
+bj1 <- cvxr_result$getValue(beta_j)
+r_j <- compute_residual(centered$y,
+                        centered$responses,
+                        centered$covariates, gj1, bj1)
+compute_obj_value(r_j, gj1, bj1, p, d, c(0.03, 0.02), alpha)
+```
+
+```{r}
+gj2 <- cggr_result$gamma_j
+bj2 <- cggr_result$beta_j
+r_j <- compute_residual(centered$y,
+                        centered$responses,
+                        centered$covariates, gj2, bj2)
+compute_obj_value(r_j, gj2, bj2, p, d, c(0.03, 0.02), alpha)
+```

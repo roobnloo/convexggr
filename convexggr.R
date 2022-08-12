@@ -104,7 +104,6 @@ convex_ggr_component <- function(y, responses, covariates, lambda, alpha = 0.5,
             is.null(dim(lambda)),
             length(lambda) == 2)
 
-  n <- nrow(responses)
   d <- ncol(responses) + 1
   p <- ncol(covariates)
 
@@ -126,7 +125,7 @@ convex_ggr_component <- function(y, responses, covariates, lambda, alpha = 0.5,
   r_j <- compute_residual(y, responses, covariates, gamma_j, beta_j)
 
   losses <- numeric(max_iter + 1)
-  losses[1] <- sq_error_loss(r_j)
+  losses[1] <- compute_obj_value(r_j, gamma_j, beta_j, p, d, lambda, alpha)
 
   for (i in seq_len(max_iter)) {
     result_g <- apply_L1_update(gamma_j, r_j, covariates, lambda[1])
@@ -144,10 +143,17 @@ convex_ggr_component <- function(y, responses, covariates, lambda, alpha = 0.5,
                                          r_j, covariates[, h], responses,
                                          lambda[2], alpha)
       beta_j[bh_idx] <- result_bh$bh_j
+
+      ## The code below applies only the LASSO to the groups in beta.
+      ## Useful for testing.
+      # elt_wise <- apply(responses, 2, function(t) t * covariates[, h])
+      # result_bh <- apply_L1_update(beta_j[bh_idx], r_j,
+      #                              elt_wise,
+      #                              lambda[2] * alpha)
+      # beta_j[bh_idx] <- result_bh$v
       r_j <- result_bh$full_resid
     }
-
-    losses[i + 1] <- sq_error_loss(r_j)
+    losses[i + 1] <- compute_obj_value(r_j, gamma_j, beta_j, p, d, lambda, alpha)
     if (is.na(losses[i + 1]) | is.nan(losses[i + 1])) {
       stop("NaN value encountered when computing L2 loss.
            Perhaps the loss exploded.")
@@ -167,7 +173,22 @@ convex_ggr_component <- function(y, responses, covariates, lambda, alpha = 0.5,
               beta_j = beta_j,
               sigma_sq = sigma_sq,
               losses = losses,
-              resid = r_j))
+              resid = r_j,
+              obj_val = compute_obj_value(r_j, gamma_j, beta_j, p, d, lambda, alpha)))
+}
+
+compute_obj_value <- function(r_j, gamma_j, beta_j, p, d, lambda, alpha) {
+  sum_sq <- sum(r_j^2) / (2 * length(r_j))
+
+  group_lasso_term <-
+      map(seq_len(p),
+          ~ norm(beta_j[.x * (d - 1) + seq_len(d - 1)], type = "2")) |>
+      reduce(`+`)
+
+  sum_sq +
+    lambda[1] * sum(abs(gamma_j)) +
+    alpha * lambda[2] * sum(abs(beta_j)) +
+    (1 - alpha) * lambda[2] * group_lasso_term
 }
 
 #' @return scalar estimate of the variance of the error for the jth response
@@ -182,34 +203,46 @@ est_var <- function(r_j, gamma_j, beta_j) {
 #' and group-wise sparsity. The groups are encoded by the interaction between
 #' the covariates and the responses.
 #' @param bh_j the coefficient vector to be made group-wise and elt-wise sparse.
+#' TODO: Most of this function ought to be implemented in C++.
 apply_sparsegl_update <- function(bh_j, full_resid, covariate_h, responses,
                                   lambda0, alpha) {
   stopifnot(length(full_resid) == nrow(responses),
             length(full_resid) == length(covariate_h))
-  n <- nrow(responses)
-  bh_j_new <- numeric(length(bh_j))
-  full_resid_new <- full_resid
-  bh_j_norm <- norm(bh_j, "2")
 
-  for (k in seq_len(ncol(responses))) {
-    element_wise <- responses[, k] * covariate_h
-    partial_resid <- full_resid + bh_j[k] * element_wise
-
-    numerator <- sum(element_wise * partial_resid) / n |>
-                   soft_threshold(alpha * lambda0)
-
-    # it is suggested to multiply the second term in the denom by sqrt(length(bh_j))
-    denom <- sum(element_wise^2) / n +
-              (1 - alpha) * lambda0 / bh_j_norm
-
-    bh_j_new[k] <- numerator / denom
-
-    full_resid <- partial_resid - bh_j[k] * element_wise
-    full_resid_new <- full_resid_new + bh_j[k] * element_wise -
-                      bh_j_new[k] * element_wise
+  if (all(bh_j == 0)) {
+    return(list(bh_j = bh_j, full_resid = full_resid))
   }
 
-  list(bh_j = bh_j_new, full_resid = full_resid_new)
+  n <- nrow(responses)
+
+  grp_intx_mx <- apply(responses, 2, function(x) x * covariate_h)
+  grp_partial_resid <- full_resid + grp_intx_mx %*% bh_j
+  grp_thresh <- soft_threshold(t(grp_intx_mx) %*% grp_partial_resid / n,
+                               alpha * lambda0)
+
+  if (sqrt(sum(grp_thresh^2)) <= (1 - alpha) * lambda0) {
+    return(list(bh_j = 0, full_resid = grp_partial_resid))
+  }
+
+  bh_j_norm <- sqrt(sum(bh_j^2))
+  bh_j_new <- numeric(length(bh_j))
+
+  for (k in seq_along(bh_j_new)) {
+    partial_resid <- full_resid + bh_j[k] * grp_intx_mx[, k]
+    inner_prod <- sum(grp_intx_mx[, k] * partial_resid)
+
+    if (abs(inner_prod) <= n * alpha * lambda0) {
+      bh_j_new[k] <- 0
+    } else {
+      numerator <- soft_threshold(inner_prod / n, alpha * lambda0)
+      # it is suggested to multiply the 2nd term in the denom by sqrt(length(bh_j))
+      denom <- sum(grp_intx_mx[, k]^2) / n + (1 - alpha) * lambda0 / bh_j_norm
+      bh_j_new[k] <- numerator / denom
+    }
+  }
+
+  full_resid_new <- full_resid + grp_intx_mx %*% bh_j - grp_intx_mx %*% bh_j_new
+  return(list(bh_j = bh_j_new, full_resid = full_resid_new))
 }
 
 #' Applies the coordinate-wise update for the L1 penalty
@@ -243,12 +276,6 @@ interaction_mx <- function(responses, covariates) {
 
   map(seq_len(nrow(idx_mat)), foo) |>
     reduce(cbind)
-}
-
-#' @return squared L2 loss given parameters gamma_j and beta_j
-sq_error_loss <- function(full_residual) {
-  stopifnot(is.atomic(full_residual))
-  norm(full_residual, type = "2")^2 / (2 * length(full_residual))
 }
 
 #' @return n-vector of residuals, where n = length(y)

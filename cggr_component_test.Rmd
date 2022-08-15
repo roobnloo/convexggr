@@ -36,7 +36,8 @@ opt_vals <- vector(length = length(lambda_vals))
 for(i in seq_along(lambda_vals)) {
   cvxr_result <- cggr_component_cvxr(s$responses[, component], s$responses[, -component],
                                      s$covariates, gamma_j, beta_j,
-                                     lambda = c(0.03, lambda_vals[i]), alpha = alpha)
+                                     lambda_g = 0.03, lambda_b = lambda_vals[i],
+                                     alpha = alpha)
   gamma_vals[i, ] <- cvxr_result$getValue(gamma_j)
   beta_vals[i, ] <- cvxr_result$getValue(beta_j)
   opt_vals[i] <- cvxr_result$value
@@ -53,8 +54,8 @@ my_opt_vals <- vector(length = length(lambda_vals))
 for(i in seq_along(lambda_vals)) {
   cggr_result <- convex_ggr_component(s$responses[, component],
                                       s$responses[, -component], s$covariates,
-                                  lambda = c(0.03, lambda_vals[i]), alpha = alpha,
-                                  max_iter = 1500)
+                                      lambda_g = 0.03, lambda_b = lambda_vals[i],
+                                      alpha = alpha)
   my_gamma_vals[i, ] <- cggr_result$gamma_j
   my_beta_vals[i, ] <- cggr_result$beta_j
   my_opt_vals[i] <- cggr_result$obj_val
@@ -134,7 +135,8 @@ bench::mark(
   cggr_result <- convex_ggr_component(s$responses[, component],
                                       s$responses[, -component],
                                       s$covariates,
-                                      lambda = c(0.03, 0.02), alpha = alpha)
+                                      lambda_g = 0.03, lambda_b = 0.02,
+                                      alpha = alpha)
 )
 # test_my_gamma_vals <- cggr_result$gamma_j
 # test_my_beta_vals <- cggr_result$beta_j
@@ -155,7 +157,7 @@ bj1 <- cvxr_result$getValue(beta_j)
 r_j <- compute_residual(centered$y,
                         centered$responses,
                         centered$covariates, gj1, bj1)
-compute_obj_value(r_j, gj1, bj1, p, d, c(0.03, 0.02), alpha)
+compute_obj_value(r_j, gj1, bj1, p, d, 0.03, 0.02, alpha)
 ```
 
 ```{r}
@@ -164,5 +166,5 @@ bj2 <- cggr_result$beta_j
 r_j <- compute_residual(centered$y,
                         centered$responses,
                         centered$covariates, gj2, bj2)
-compute_obj_value(r_j, gj2, bj2, p, d, c(0.03, 0.02), alpha)
+compute_obj_value(r_j, gj2, bj2, p, d, 0.03, 0.02, alpha)
 ```

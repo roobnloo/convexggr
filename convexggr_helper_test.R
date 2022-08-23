@@ -1,4 +1,4 @@
-source("convexggr.R")
+source("cggr_node.R")
 library(assertthat)
 
 ## Test interaction_mx

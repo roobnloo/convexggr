@@ -1,7 +1,7 @@
 library(CVXR)
-source("convexggr.R")
+source("cggr_node.R")
 
-cggr_component_cvxr <- function(y, responses, covariates, gamma_j, beta_j,
+cggr_node_cvxr <- function(y, responses, covariates, gamma_j, beta_j,
                                 lambda_g, lambda_b, alpha) {
   p <- ncol(covariates)
   d <- ncol(responses) + 1

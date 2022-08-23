@@ -8,7 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 set.seed(101)
-source("convexggr.R")
+source("cggr_node.R")
 source("generate_data.R")
 library(tidyverse)
 ```
@@ -24,7 +24,7 @@ s <- generate_data(num, d, p, ve=0.2)
 Run for entire path 
 ```{r}
 run_component_reg <- function(reg) {
-  result <- convex_ggr_component(s$responses[, 1], s$responses[, -1], s$covariates,
+  result <- cggr_node(s$responses[, 1], s$responses[, -1], s$covariates,
                    lambda = c(0, reg), alpha = 0.5, gamma_init = rep(0.25, p),
                    max_iter = 150)
   return(result)

@@ -7,7 +7,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 set.seed(100)
-source("convexggr.R")
+source("cggr_node.R")
 source("generate_data.R")
 library(tidyverse)
 ```

@@ -1,5 +1,5 @@
 library(CVXR)
-source("convexggr.R")
+source("cggr_node.R")
 source("generate_data.R")
 
 set.seed(104)

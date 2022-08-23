@@ -26,7 +26,7 @@ convex_ggr <- function(responses, covariates, lambda, alpha = 0.5,
                    ~ matrix(nrow = d, ncol = d))
 
   for (i in seq_len(d)) {
-    result <- convex_ggr_component(responses[, i], responses[, -i], covariates,
+    result <- cggr_node(responses[, i], responses[, -i], covariates,
                                    lambda, alpha, gamma_init, beta_init,
                                    max_iter, tol)
     gamma_mx[i, ] <- result$gamma_j
@@ -93,7 +93,7 @@ symmetrize <- function(mx) {
 #' @param lambda_g penalty scalar for the mean gamma
 #' @param lambda_b penalty scalar for components of beta
 #' @param alpha value between 0 and 1 that determines sparse group lasso penalty
-convex_ggr_component <- function(y, responses, covariates,
+cggr_node <- function(y, responses, covariates,
                                  lambda_g, lambda_b, alpha = 0.5,
                                  gamma_init = NULL,
                                  beta_init = NULL,

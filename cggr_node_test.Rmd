@@ -8,7 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 source("generate_data.R")
-source("cvxr_component.R")
+source("cvxr_node.R")
 ```
 
 ```{r generate}
@@ -34,7 +34,7 @@ beta_vals <-  matrix(NA, nrow = length(lambda_vals), ncol = (p + 1) * (d - 1))
 opt_vals <- vector(length = length(lambda_vals))
 
 for(i in seq_along(lambda_vals)) {
-  cvxr_result <- cggr_component_cvxr(s$responses[, component], s$responses[, -component],
+  cvxr_result <- cggr_node_cvxr(s$responses[, component], s$responses[, -component],
                                      s$covariates, gamma_j, beta_j,
                                      lambda_g = 0.03, lambda_b = lambda_vals[i],
                                      alpha = alpha)
@@ -52,7 +52,7 @@ my_beta_vals <-  matrix(NA, nrow = length(lambda_vals), ncol = (p + 1) * (d - 1)
 my_opt_vals <- vector(length = length(lambda_vals))
 
 for(i in seq_along(lambda_vals)) {
-  cggr_result <- convex_ggr_component(s$responses[, component],
+  cggr_result <- cggr_node(s$responses[, component],
                                       s$responses[, -component], s$covariates,
                                       lambda_g = 0.03, lambda_b = lambda_vals[i],
                                       alpha = alpha)
@@ -119,7 +119,7 @@ for (k in (1:p)[-s$cov_nz_idx]) {
 gamma_j <- Variable(p)
 beta_j <- Variable((p + 1) * (d - 1))
 bench::mark(
-  cvxr_result <- cggr_component_cvxr(s$responses[, component],
+  cvxr_result <- cggr_node_cvxr(s$responses[, component],
                                      s$responses[, -component],
                                      s$covariates, gamma_j, beta_j,
                                      lambda = c(0.03, 0.02), alpha = alpha)
@@ -132,7 +132,7 @@ test_opt_vals
 
 ```{r}
 bench::mark(
-  cggr_result <- convex_ggr_component(s$responses[, component],
+  cggr_result <- cggr_node(s$responses[, component],
                                       s$responses[, -component],
                                       s$covariates,
                                       lambda_g = 0.03, lambda_b = 0.02,

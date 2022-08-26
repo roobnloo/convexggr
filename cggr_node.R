@@ -1,17 +1,53 @@
 library(purrr)
 
+cggr_node <- function(y, responses, covariates,
+                      lambda_g, lambda_b_seq, alpha,
+                      max_iter = 1000,
+                      tol = 1e-5) {
+  stopifnot(is.matrix(responses),
+            is.matrix(covariates),
+            nrow(responses) == nrow(covariates),
+            length(y) == nrow(covariates),
+            lambda_g > 0,
+            alpha >= 0 && alpha <= 1,
+            length(lambda_b_seq) > 0,
+            all(lambda_b_seq > 0))
+
+  d <- ncol(responses) + 1
+  p <- ncol(covariates)
+
+  lambda_b_seq <- sort(lambda_b_seq, decreasing = T)
+
+  centered <- center_vars(y, responses, covariates)
+  y <- centered$y
+  responses <- centered$responses
+  covariates <- centered$covariates
+
+  result <- vector(mode = "list", length = length(lambda_b_seq))
+  gamma_init <- initialize_gamma(p)
+  beta_init <- initialize_beta((p + 1) * (d - 1))
+  for (i in seq_along(result)) {
+    result[[i]] <- cggr_node_init(y, responses, covariates,
+                                  lambda_g, lambda_b_seq[i], alpha,
+                                  gamma_init, beta_init, max_iter, tol)
+    # TODO: fix the warm starts
+    # gamma_init <- result[[i]]$gamma_j
+    # beta_init <- result[[i]]$beta_j
+  }
+
+  return(result)
+}
+
 #' @param y n vector of the response to solve
 #' @param reponses n x (d-1) matrix of the other responses
 #' @param covariates n x p matrix of covariates
 #' @param lambda_g penalty scalar for the mean gamma
 #' @param lambda_b penalty scalar for components of beta
 #' @param alpha value between 0 and 1 that determines sparse group lasso penalty
-cggr_node <- function(y, responses, covariates,
-                                 lambda_g, lambda_b, alpha = 0.5,
-                                 gamma_init = NULL,
-                                 beta_init = NULL,
-                                 max_iter = 1000,
-                                 tol = 1e-5) {
+cggr_node_init <- function(y, responses, covariates,
+                           lambda_g, lambda_b, alpha,
+                           gamma_j, beta_j,
+                           max_iter, tol) {
   stopifnot(is.matrix(responses),
             is.matrix(covariates),
             nrow(responses) == nrow(covariates),
@@ -22,25 +58,10 @@ cggr_node <- function(y, responses, covariates,
   d <- ncol(responses) + 1
   p <- ncol(covariates)
 
-  centered <- center_vars(y, responses, covariates)
-  y <- centered$y
-  responses <- centered$responses
-  covariates <- centered$covariates
-
-  gamma_j <- gamma_init
-  beta_j <- beta_init
-
-  if (is.null(gamma_j)) {
-    gamma_j <- initialize_gamma(p)
-  }
-  if (is.null(beta_j)) {
-    beta_j <- initialize_beta((p + 1) * (d - 1))
-  }
-
   r_j <- compute_residual(y, responses, covariates, gamma_j, beta_j)
 
-  losses <- numeric(max_iter + 1)
-  losses[1] <- compute_obj_value(r_j, gamma_j, beta_j, p, d,
+  obj_val <- numeric(max_iter + 1)
+  obj_val[1] <- compute_obj_value(r_j, gamma_j, beta_j, p, d,
                                  lambda_g, lambda_b, alpha)
 
   for (i in seq_len(max_iter)) {
@@ -69,18 +90,18 @@ cggr_node <- function(y, responses, covariates,
       # beta_j[bh_idx] <- result_bh$v
       r_j <- result_bh$full_resid
     }
-    losses[i + 1] <- compute_obj_value(r_j, gamma_j, beta_j, p, d,
+    obj_val[i + 1] <- compute_obj_value(r_j, gamma_j, beta_j, p, d,
                                        lambda_g, lambda_b, alpha)
-    if (is.na(losses[i + 1]) | is.nan(losses[i + 1])) {
+    if (is.na(obj_val[i + 1]) | is.nan(obj_val[i + 1])) {
       stop("NaN value encountered when computing L2 loss.
            Perhaps the loss exploded.")
     }
-    if (abs(losses[i + 1] - losses[i]) < tol) {
-      losses <- losses[seq_len(i + 1)]
+    if (abs(obj_val[i + 1] - obj_val[i]) < tol) {
+      obj_val <- obj_val[seq_len(i + 1)]
       break
     }
   }
-  if (length(losses) == max_iter + 1) {
+  if (length(obj_val) == max_iter + 1) {
     warning("Maximum iterations exceeded!")
   }
 
@@ -89,10 +110,8 @@ cggr_node <- function(y, responses, covariates,
   return(list(gamma_j = gamma_j,
               beta_j = beta_j,
               sigma_sq = sigma_sq,
-              losses = losses,
-              resid = r_j,
-              obj_val = compute_obj_value(r_j, gamma_j, beta_j, p, d,
-                                          lambda_g, lambda_b, alpha)))
+              obj_val = obj_val,
+              resid = r_j))
 }
 
 compute_obj_value <- function(r_j, gamma_j, beta_j, p, d,

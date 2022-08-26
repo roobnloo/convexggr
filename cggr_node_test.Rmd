@@ -19,12 +19,12 @@ num <- 200
 #lambda <- c(1, 0)
 alpha <- 1 # 1 => lasso, 0 => group lasso
 s <- generate_data(num, d, p, ve = 0.3)
+node <- 3
+trials <- 10
+lambda_vals <- 10^seq(-2, log10(5), length = trials)
 ```
 
 ```{r}
-component <- 3
-trials <- 10
-lambda_vals <- 10^seq(-2, log10(5), length = trials)
 gamma_j <- Variable(p)
 beta_j <- Variable((p + 1) * (d - 1))
 
@@ -34,7 +34,7 @@ beta_vals <-  matrix(NA, nrow = length(lambda_vals), ncol = (p + 1) * (d - 1))
 opt_vals <- vector(length = length(lambda_vals))
 
 for(i in seq_along(lambda_vals)) {
-  cvxr_result <- cggr_node_cvxr(s$responses[, component], s$responses[, -component],
+  cvxr_result <- cggr_node_cvxr(s$responses[, node], s$responses[, -node],
                                      s$covariates, gamma_j, beta_j,
                                      lambda_g = 0.03, lambda_b = lambda_vals[i],
                                      alpha = alpha)
@@ -46,20 +46,14 @@ for(i in seq_along(lambda_vals)) {
 
 
 ```{r}
-## Run my implementation
-my_gamma_vals <-  matrix(NA, nrow = length(lambda_vals), ncol = p)
-my_beta_vals <-  matrix(NA, nrow = length(lambda_vals), ncol = (p + 1) * (d - 1))
-my_opt_vals <- vector(length = length(lambda_vals))
+cggr_result <- cggr_node(s$responses[, component],
+                         s$responses[, -component], s$covariates,
+                         lambda_g = 0.03, lambda_b_seq = lambda_vals,
+                         alpha = alpha)
 
-for(i in seq_along(lambda_vals)) {
-  cggr_result <- cggr_node(s$responses[, component],
-                                      s$responses[, -component], s$covariates,
-                                      lambda_g = 0.03, lambda_b = lambda_vals[i],
-                                      alpha = alpha)
-  my_gamma_vals[i, ] <- cggr_result$gamma_j
-  my_beta_vals[i, ] <- cggr_result$beta_j
-  my_opt_vals[i] <- cggr_result$obj_val
-}
+my_gamma_vals <- map(cggr_result, ~ .x$gamma_j) |> reduce(cbind)
+my_beta_vals <- map(cggr_result, ~ .x$beta_j) |> reduce(rbind)
+my_opt_vals <- map(cggr_result, ~ .x$obj_val[length(.x$obj_val)]) |> reduce(c)
 ```
 
 
@@ -118,30 +112,26 @@ for (k in (1:p)[-s$cov_nz_idx]) {
 ```{r}
 gamma_j <- Variable(p)
 beta_j <- Variable((p + 1) * (d - 1))
-bench::mark(
-  cvxr_result <- cggr_node_cvxr(s$responses[, component],
-                                     s$responses[, -component],
-                                     s$covariates, gamma_j, beta_j,
-                                     lambda = c(0.03, 0.02), alpha = alpha)
-)
-# test_gamma_vals <- cvxr_result$getValue(gamma_j)
-# test_beta_vals <- cvxr_result$getValue(beta_j)
-# test_opt_vals <- cvxr_result$value
-test_opt_vals
+cvxr_result <- cggr_node_cvxr(s$responses[, component],
+                              s$responses[, -component],
+                              s$covariates, gamma_j, beta_j,
+                              lambda_g = 0.03, lambda_b = 0.02, alpha = 0.5)
+test_gamma_vals <- cvxr_result$getValue(gamma_j)
+test_beta_vals <- cvxr_result$getValue(beta_j)
+(test_opt_vals <- cvxr_result$value)
 ```
 
 ```{r}
-bench::mark(
-  cggr_result <- cggr_node(s$responses[, component],
-                                      s$responses[, -component],
-                                      s$covariates,
-                                      lambda_g = 0.03, lambda_b = 0.02,
-                                      alpha = alpha)
-)
-# test_my_gamma_vals <- cggr_result$gamma_j
-# test_my_beta_vals <- cggr_result$beta_j
-# test_my_opt_vals <- cggr_result$obj_val
-test_my_opt_vals
+cggr_result <- cggr_node_warm(s$responses[, component],
+                              s$responses[, -component],
+                              s$covariates,
+                              lambda_g = 0.03, lambda_b = 0.02,
+                              alpha = 0.5,
+                              runif(p), rep(0, (p + 1) * (d - 1)),
+                              1000, 1e-5)
+test_my_gamma_vals <- cggr_result$gamma_j
+test_my_beta_vals <- cggr_result$beta_j
+(test_my_opt_vals <- cggr_result$obj_val)
 ```
 
 ```{r}

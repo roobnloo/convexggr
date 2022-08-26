@@ -1,0 +1,45 @@
+---
+title: "Untitled"
+author: "Robin Liu"
+date: "2022-08-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(modelr)
+source("generate_data.R")
+source("cv_cggr.R")
+```
+
+```{r generate}
+set.seed(100)
+d <- 5
+p <- 10
+num <- 200
+s <- generate_data(num, d, p, ve = 0.3)
+node <- 3
+trials <- 15
+lambda_seq <- 10^seq(-2, log10(3), length = trials)
+```
+
+```{r}
+cv_result <- cv_cggr(s$responses[, node], s$responses[, -node],
+                     s$covariates, lambda_seq, nfold = 5)
+```
+
+```{r}
+plot(seq_len(trials), cv_result, type = "l")
+abline(v = which.min(cv_result), col = "red")
+```
+
+```{r}
+for (i in seq_len(d)) {
+  cv_result <- cv_cggr(s$responses[, i], s$responses[, -i], s$covariates,
+                       lambda_seq, nfold = 5)
+  plot(seq_along(lambda_seq), cv_result, type = "l")
+  abline(v = which.min(cv_result), col = "red")
+}
+```
+
+

@@ -46,8 +46,8 @@ for(i in seq_along(lambda_vals)) {
 
 
 ```{r}
-cggr_result <- cggr_node(s$responses[, component],
-                         s$responses[, -component], s$covariates,
+cggr_result <- cggr_node(s$responses[, node],
+                         s$responses[, -node], s$covariates,
                          lambda_g = 0.03, lambda_b_seq = lambda_vals,
                          alpha = alpha)
 
@@ -73,7 +73,7 @@ for (k in c(0, seq_along(s$cov_nz_idx))) {
        ylim = ylim, xlim = xlim)
   abline(h=0, col = "gray80")
   matlines(log(lambda_vals), beta_vals[, beta_idx])
-  nonzero_idx <- which(s$b_mxs[[k + 1]][component, -component] != 0)
+  nonzero_idx <- which(s$b_mxs[[k + 1]][node, -node] != 0)
   if (length(nonzero_idx) > 0) {
     legend("topright", lty=nonzero_idx, col=nonzero_idx, legend = nonzero_idx)
   }

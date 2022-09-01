@@ -8,38 +8,78 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(modelr)
+library(patchwork)
 source("generate_data.R")
 source("cv_cggr.R")
+source("cggr.R")
+source("simulate_test_utils.R")
 ```
 
 ```{r generate}
 set.seed(100)
 d <- 5
 p <- 10
-num <- 200
+num <- 400
 s <- generate_data(num, d, p, ve = 0.3)
+trials <- 20
+lambda_g <- 0.01
+lambda_seq <- 10^seq(-3, log10(2), length = trials)
+alpha <- 0.5
+```
+
+```{r}
 node <- 3
-trials <- 15
-lambda_seq <- 10^seq(-2, log10(3), length = trials)
-```
-
-```{r}
 cv_result <- cv_cggr(s$responses[, node], s$responses[, -node],
-                     s$covariates, lambda_seq, nfold = 5)
+                     s$covariates, lambda_g, lambda_seq, alpha, nfold = 5)
 ```
 
 ```{r}
-plot(seq_len(trials), cv_result, type = "l")
+plot(seq_len(trials), cv_result, type = "l", xlab = "lambda idx")
 abline(v = which.min(cv_result), col = "red")
 ```
 
 ```{r}
+tuned_lambda_b <- numeric(length = d)
 for (i in seq_len(d)) {
   cv_result <- cv_cggr(s$responses[, i], s$responses[, -i], s$covariates,
-                       lambda_seq, nfold = 5)
-  plot(seq_along(lambda_seq), cv_result, type = "l")
+                       lambda_g, lambda_seq, alpha, nfold = 5)
+  plot(seq_along(lambda_seq), cv_result, type = "l", xlab = "lambda idx")
   abline(v = which.min(cv_result), col = "red")
+  tuned_lambda_b[i] <- lambda_seq[which.min(cv_result)]
+}
+tuned_lambda_b
+```
+
+
+```{r}
+result <- convex_ggr(s$responses, s$covariates, lambda_g, tuned_lambda_b, alpha)
+```
+
+```{r}
+for (b_mx in result$beta_mxs) {
+  print(beta_viz(b_mx))
+}
+```
+```{r}
+for (b_mx in s$b_mxs) {
+  print(beta_viz(b_mx))
+}
+s$cov_nz_idx
+```
+
+```{r}
+compute_idx <- c(1, 1 + s$cov_nz_idx)
+for (i in seq_along(s$b_mxs)) {
+  cov_lbl <- paste0("component ", compute_idx[i] - 1)
+  computed <- beta_viz(result$beta_mxs[[compute_idx[i]]],
+                       paste("Computed", cov_lbl))
+  actual <- beta_viz(s$b_mxs[[i]], paste("Actual", cov_lbl))
+  print(computed + actual)
 }
 ```
 
 
+```{r}
+print(gamma_viz(result$gamma_mx))
+print(gamma_viz(s$gamma_mx))
+```

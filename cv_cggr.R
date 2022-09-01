@@ -5,7 +5,7 @@ source("cggr_node.R")
 #' @param reponses n x (d-1) matrix of the other responses
 #' @param covariates n x p matrix of covariates
 #' @param lambda_seq sequence of penalty terms
-cv_cggr <- function(y, responses, covariates, lambda_seq, nfold = 5) {
+cv_cggr <- function(y, responses, covariates, lambda_g, lambda_seq, alpha, nfold = 5) {
   stopifnot(is.matrix(responses),
             is.matrix(covariates),
             nrow(responses) == nrow(covariates),
@@ -15,15 +15,10 @@ cv_cggr <- function(y, responses, covariates, lambda_seq, nfold = 5) {
   data_df <- as.data.frame(cbind(y, responses, covariates))
   kfold <- crossv_kfold(data_df, nfold)
 
-  # gamma_init <- rep(0, p)
-  # beta_init <- rep(0, d - 1)
-
-  # cv_mses <- sapply(lambda_seq,
-  #                function (t) cv_cggr_pen(y, responses, covariates, kfold, t))
-
   fold_mses <- matrix(NA, nrow = nfold, ncol = length(lambda_seq))
   for (i in seq_len(nfold)) {
-    fold_mses[i, ] <- cv_cggr_fold(y, responses, covariates, lambda_seq,
+    fold_mses[i, ] <- cv_cggr_fold(y, responses, covariates,
+                                   lambda_g, lambda_seq, alpha,
                                    kfold$train[[i]]$idx, kfold$test[[i]]$idx)
   }
 
@@ -33,14 +28,14 @@ cv_cggr <- function(y, responses, covariates, lambda_seq, nfold = 5) {
 
 #' @return Numeric vector of length(lambda_seq) giving test mse for a provided
 #' train/test split
-cv_cggr_fold <- function(y, responses, covariates, lambda_seq,
-                         train_idx, test_idx,
-                         lambda_g = 0.1, alpha = 0.5) {
+cv_cggr_fold <- function(y, responses, covariates,
+                         lambda_g, lambda_seq, alpha,
+                         train_idx, test_idx) {
   y_train <- y[train_idx]
   responses_train <- responses[train_idx, ]
   covariates_train <- covariates[train_idx, ]
 
-  n_train <- nrow(responses_train)
+  n_train <- length(train_idx)
   sd_n <- function(t) {
     sd(t) * sqrt((n_train - 1) / n_train)
   }

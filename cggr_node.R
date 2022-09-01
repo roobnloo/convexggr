@@ -16,7 +16,8 @@ cggr_node <- function(y, responses, covariates,
   d <- ncol(responses) + 1
   p <- ncol(covariates)
 
-  lambda_b_seq <- sort(lambda_b_seq, decreasing = T)
+  # TODO: Once warm starts works, we will sort the weights decreasing.
+  # lambda_b_seq <- sort(lambda_b_seq, decreasing = T)
 
   centered <- center_vars(y, responses, covariates)
   y <- centered$y
@@ -134,7 +135,7 @@ est_var <- function(r_j, gamma_j, beta_j) {
   # threshold the zero coefficients
   tol <- 1e-10
   num_non_zero <- sum(abs(c(gamma_j, beta_j)) < tol)
-  norm(r_j, type = "2")^2 / (length(r_j) - num_non_zero)
+  sum(r_j^2) / (length(r_j) - num_non_zero)
 }
 
 #' Apply the sparse group lasso penalty to encourage both element-wise

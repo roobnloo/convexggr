@@ -13,7 +13,7 @@ gamma_viz <- function(gamma_mx) {
     theme_minimal()
 }
 
-beta_viz <- function(beta_mx) {
+beta_viz <- function(beta_mx, title = "") {
   beta0 <- as_tibble(cbind(expand.grid(rev(seq_len(d)), seq_len(d)),
                            c(beta_mx))) |>
            setNames(c("row", "col", "value"))
@@ -22,6 +22,7 @@ beta_viz <- function(beta_mx) {
     geom_tile(color = "white") +
     scale_fill_gradient2() +
     coord_fixed() +
+    labs(title = title) +
     theme_minimal()
 }
 

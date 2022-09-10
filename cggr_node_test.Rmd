@@ -17,7 +17,7 @@ d <- 5
 p <- 10
 num <- 200
 #lambda <- c(1, 0)
-alpha <- 1 # 1 => lasso, 0 => group lasso
+alpha <- 0.05 # 1 => lasso, 0 => group lasso
 s <- generate_data(num, d, p, ve = 0.3)
 node <- 3
 trials <- 10
@@ -112,8 +112,8 @@ for (k in (1:p)[-s$cov_nz_idx]) {
 ```{r}
 gamma_j <- Variable(p)
 beta_j <- Variable((p + 1) * (d - 1))
-cvxr_result <- cggr_node_cvxr(s$responses[, component],
-                              s$responses[, -component],
+cvxr_result <- cggr_node_cvxr(s$responses[, node],
+                              s$responses[, -node],
                               s$covariates, gamma_j, beta_j,
                               lambda_g = 0.03, lambda_b = 0.02, alpha = 0.5)
 test_gamma_vals <- cvxr_result$getValue(gamma_j)
@@ -122,21 +122,21 @@ test_beta_vals <- cvxr_result$getValue(beta_j)
 ```
 
 ```{r}
-cggr_result <- cggr_node_warm(s$responses[, component],
-                              s$responses[, -component],
-                              s$covariates,
-                              lambda_g = 0.03, lambda_b = 0.02,
-                              alpha = 0.5,
-                              runif(p), rep(0, (p + 1) * (d - 1)),
-                              1000, 1e-5)
+set.seed(10)
+cggr_result <- cggr_node(s$responses[, node],
+                         s$responses[, -node],
+                         s$covariates,
+                         lambda_g = 0.03, lambda_b = 0.02,
+                         alpha = 0.5,
+                         1000, 1e-5)[[1]]
 test_my_gamma_vals <- cggr_result$gamma_j
 test_my_beta_vals <- cggr_result$beta_j
 (test_my_opt_vals <- cggr_result$obj_val)
 ```
 
 ```{r}
-centered <- center_vars(s$responses[, component],
-                        s$responses[, -component],
+centered <- center_vars(s$responses[, node],
+                        s$responses[, -node],
                         s$covariates)
 ```
 

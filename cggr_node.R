@@ -117,17 +117,19 @@ cggr_node_init <- function(y, responses, covariates,
 
 compute_obj_value <- function(r_j, gamma_j, beta_j, p, d,
                               lambda_g, lambda_b, alpha) {
-  sum_sq <- sum(r_j^2) / (2 * length(r_j))
-
   group_lasso_term <-
       map(seq_len(p),
           ~ norm(beta_j[.x * (d - 1) + seq_len(d - 1)], type = "2")) |>
       reduce(`+`)
 
-  sum_sq +
+  quad_loss(r_j) +
     lambda_g * sum(abs(gamma_j)) +
     alpha * lambda_b * sum(abs(beta_j)) +
     (1 - alpha) * lambda_b * group_lasso_term
+}
+
+quad_loss <- function(r_j) {
+  sum(r_j^2) / (2 * length(r_j))
 }
 
 #' @return scalar estimate of the variance of the error for the jth response
@@ -142,46 +144,96 @@ est_var <- function(r_j, gamma_j, beta_j) {
 #' and group-wise sparsity. The groups are encoded by the interaction between
 #' the covariates and the responses.
 #' @param bh_j the coefficient vector to be made group-wise and elt-wise sparse.
+#' @returns updated coefficient vector and residual vector
 #' TODO: Most of this function ought to be implemented in C++.
 apply_sparsegl_update <- function(bh_j, full_resid, covariate_h, responses,
                                   lambda, alpha) {
   stopifnot(length(full_resid) == nrow(responses),
             length(full_resid) == length(covariate_h))
 
-  if (all(bh_j == 0)) {
-    return(list(bh_j = bh_j, full_resid = full_resid))
-  }
-
   n <- nrow(responses)
-
   grp_intx_mx <- apply(responses, 2, function(x) x * covariate_h)
   grp_partial_resid <- full_resid + grp_intx_mx %*% bh_j
-  grp_thresh <- soft_threshold(t(grp_intx_mx) %*% grp_partial_resid / n,
+  grp_thresh <- soft_threshold(t(grp_intx_mx) %*% grp_partial_resid,
                                alpha * lambda)
 
+  # If this subgradient condition holds, the entire group should be zero
   if (sqrt(sum(grp_thresh^2)) <= (1 - alpha) * lambda) {
     return(list(bh_j = 0, full_resid = grp_partial_resid))
   }
 
-  bh_j_norm <- sqrt(sum(bh_j^2))
-  bh_j_new <- numeric(length(bh_j))
-
-  for (k in seq_along(bh_j_new)) {
-    partial_resid <- full_resid + bh_j[k] * grp_intx_mx[, k]
-    inner_prod <- sum(grp_intx_mx[, k] * partial_resid)
-
-    if (abs(inner_prod) <= n * alpha * lambda) {
-      bh_j_new[k] <- 0
-    } else {
-      numerator <- soft_threshold(inner_prod / n, alpha * lambda)
-      # it is suggested to multiply the 2nd term in the denom by sqrt(length(bh_j))
-      denom <- sum(grp_intx_mx[, k]^2) / n + (1 - alpha) * lambda / bh_j_norm
-      bh_j_new[k] <- numerator / denom
+  step_size <- 1
+  bh_j_new <- bh_j
+  theta_new <- bh_j
+  maxit <- 100
+  obj <- Inf
+  for (l in seq_len(maxit)) {
+    # TODO: clean this up
+    obj_new <- compute_obj_value(grp_partial_resid - grp_intx_mx %*% bh_j_new,
+                                  0, c(rep(0, length(bh_j_new)), bh_j_new),
+                                  1, length(bh_j_new) + 1, 0, lambda, alpha)
+    if (abs(obj_new - obj) < 1e-5) {
+      break
     }
+    if (l == maxit) {
+      warning(paste("Inner loop within SGL descent exceeded max", maxit, "iterations"))
+    }
+
+    obj <- obj_new
+    theta_old <- theta_new
+    grp_fit <- grp_intx_mx %*% bh_j_new
+    grad <- -1 * t(grp_intx_mx) %*% (grp_partial_resid - grp_fit) / n
+
+    # Optimize the step size
+    quad_loss_old <- quad_loss(grp_partial_resid - grp_fit)
+    repeat {
+      theta_new <- sgl_gd_update(bh_j_new, step_size, grad, alpha, lambda)
+      delta <- theta_new - bh_j_new
+      rhs <- quad_loss_old + sum(grad * delta) + sum(delta^2) / (2 * step_size)
+      lhs <- quad_loss(grp_partial_resid - grp_intx_mx %*% theta_new)
+      if (is.na(rhs + lhs)) {
+        browser()
+      }
+      if (lhs <= rhs) {
+        break
+      }
+      step_size <- step_size * 0.8
+    }
+
+    # Nesterov momentum step
+    bh_j_new <- theta_old + (l / (l + 3)) * (theta_new - theta_old)
   }
 
-  full_resid_new <- full_resid + grp_intx_mx %*% bh_j - grp_intx_mx %*% bh_j_new
-  return(list(bh_j = bh_j_new, full_resid = full_resid_new))
+  # # Old elementwise technique that is not optimal
+  # bh_j_norm <- sqrt(sum(bh_j^2))
+  # bh_j_new <- numeric(length(bh_j))
+  #
+  # n <- nrow(responses)
+  # for (k in seq_along(bh_j_new)) {
+  #   partial_resid <- full_resid + bh_j[k] * grp_intx_mx[, k]
+  #   inner_prod <- sum(grp_intx_mx[, k] * partial_resid)
+  #
+  #   if (abs(inner_prod) <= n * alpha * lambda) {
+  #     bh_j_new[k] <- 0
+  #   } else {
+  #     numerator <- soft_threshold(inner_prod / n, alpha * lambda)
+  #     # it is suggested to multiply the 2nd term in the denom by sqrt(length(bh_j))
+  #     denom <- sum(grp_intx_mx[, k]^2) / n + (1 - alpha) * lambda / bh_j_norm
+  #     bh_j_new[k] <- numerator / denom
+  #   }
+  # }
+
+  full_resid_new <- grp_partial_resid - grp_intx_mx %*% bh_j_new
+  return(list(bh_j = as.numeric(bh_j_new), full_resid = full_resid_new))
+}
+
+sgl_gd_update <- function(center, step_size, grad, alpha, lambda) {
+    thresh_step <- soft_threshold(center - step_size * grad,
+                                  step_size * alpha * lambda)
+    ss <- sum(thresh_step^2)
+    denom <- ifelse(ss == 0, 1, sqrt(ss))
+    max_term <- max(0, 1 - step_size * (1 - alpha) * lambda / denom)
+    return(max_term * thresh_step)
 }
 
 #' Applies the coordinate-wise update for the L1 penalty

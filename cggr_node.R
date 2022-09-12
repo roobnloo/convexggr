@@ -16,7 +16,6 @@ cggr_node <- function(y, responses, covariates,
   d <- ncol(responses) + 1
   p <- ncol(covariates)
 
-  # TODO: Once warm starts works, we will sort the weights decreasing.
   # lambda_b_seq <- sort(lambda_b_seq, decreasing = T)
 
   centered <- center_vars(y, responses, covariates)
@@ -25,15 +24,16 @@ cggr_node <- function(y, responses, covariates,
   covariates <- centered$covariates
 
   result <- vector(mode = "list", length = length(lambda_b_seq))
-  gamma_init <- initialize_gamma(p)
-  beta_init <- initialize_beta((p + 1) * (d - 1))
+  gamma_init <- rep(0, p)
+  beta_init <- rep(0, (p + 1) * (d - 1))
   for (i in seq_along(result)) {
     result[[i]] <- cggr_node_init(y, responses, covariates,
                                   lambda_g, lambda_b_seq[i], alpha,
                                   gamma_init, beta_init, max_iter, tol)
-    # TODO: fix the warm starts
-    # gamma_init <- result[[i]]$gamma_j
-    # beta_init <- result[[i]]$beta_j
+
+    # Initialize with previous results (warm starts)
+    gamma_init <- result[[i]]$gamma_j
+    beta_init <- result[[i]]$beta_j
   }
 
   return(result)
@@ -45,6 +45,8 @@ cggr_node <- function(y, responses, covariates,
 #' @param lambda_g penalty scalar for the mean gamma
 #' @param lambda_b penalty scalar for components of beta
 #' @param alpha value between 0 and 1 that determines sparse group lasso penalty
+#' @param gamma_j initial gamma_j
+#' @param beta initial beta_j
 cggr_node_init <- function(y, responses, covariates,
                            lambda_g, lambda_b, alpha,
                            gamma_j, beta_j,
@@ -191,9 +193,6 @@ apply_sparsegl_update <- function(bh_j, full_resid, covariate_h, responses,
       delta <- theta_new - bh_j_new
       rhs <- quad_loss_old + sum(grad * delta) + sum(delta^2) / (2 * step_size)
       lhs <- quad_loss(grp_partial_resid - grp_intx_mx %*% theta_new)
-      if (is.na(rhs + lhs)) {
-        browser()
-      }
       if (lhs <= rhs) {
         break
       }
@@ -203,25 +202,6 @@ apply_sparsegl_update <- function(bh_j, full_resid, covariate_h, responses,
     # Nesterov momentum step
     bh_j_new <- theta_old + (l / (l + 3)) * (theta_new - theta_old)
   }
-
-  # # Old elementwise technique that is not optimal
-  # bh_j_norm <- sqrt(sum(bh_j^2))
-  # bh_j_new <- numeric(length(bh_j))
-  #
-  # n <- nrow(responses)
-  # for (k in seq_along(bh_j_new)) {
-  #   partial_resid <- full_resid + bh_j[k] * grp_intx_mx[, k]
-  #   inner_prod <- sum(grp_intx_mx[, k] * partial_resid)
-  #
-  #   if (abs(inner_prod) <= n * alpha * lambda) {
-  #     bh_j_new[k] <- 0
-  #   } else {
-  #     numerator <- soft_threshold(inner_prod / n, alpha * lambda)
-  #     # it is suggested to multiply the 2nd term in the denom by sqrt(length(bh_j))
-  #     denom <- sum(grp_intx_mx[, k]^2) / n + (1 - alpha) * lambda / bh_j_norm
-  #     bh_j_new[k] <- numerator / denom
-  #   }
-  # }
 
   full_resid_new <- grp_partial_resid - grp_intx_mx %*% bh_j_new
   return(list(bh_j = as.numeric(bh_j_new), full_resid = full_resid_new))
@@ -284,16 +264,6 @@ compute_residual <- function(y, responses, covariates, gamma_j, beta_j) {
 soft_threshold <- function(x, lambda) {
   stopifnot(length(lambda) == 1)
   sign(x) * pmax(abs(x) - lambda, 0)
-}
-
-#' @return initialized p-vector gamma_vec
-initialize_gamma <- function(p) {
-  runif(p)
-}
-
-#' @return initialized q-vector beta_vec
-initialize_beta <- function(q) {
-  runif(q)
 }
 
 #' @return variables with mean zero and sum-of-squares equal to nrow

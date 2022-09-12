@@ -22,9 +22,9 @@ p <- 10
 num <- 400
 s <- generate_data(num, d, p, ve = 0.3)
 trials <- 20
-lambda_g <- 0.01
-lambda_seq <- 10^seq(-3, log10(2), length = trials)
-alpha <- 0.5
+lambda_g <- 0.08
+lambda_seq <- rev(10^seq(-3, log10(2), length = trials))
+alpha <- 0.95
 ```
 
 ```{r}
@@ -59,12 +59,6 @@ result <- convex_ggr(s$responses, s$covariates, lambda_g, tuned_lambda_b, alpha)
 for (b_mx in result$beta_mxs) {
   print(beta_viz(b_mx))
 }
-```
-```{r}
-for (b_mx in s$b_mxs) {
-  print(beta_viz(b_mx))
-}
-s$cov_nz_idx
 ```
 
 ```{r}

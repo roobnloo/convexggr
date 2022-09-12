@@ -21,7 +21,7 @@ alpha <- 0.05 # 1 => lasso, 0 => group lasso
 s <- generate_data(num, d, p, ve = 0.3)
 node <- 3
 trials <- 10
-lambda_vals <- 10^seq(-2, log10(5), length = trials)
+lambda_vals <- rev(10^seq(-2, log10(5), length = trials))
 ```
 
 ```{r}

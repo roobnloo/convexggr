@@ -1,4 +1,5 @@
 source("cggr_node.R")
+source("utils.R")
 library(assertthat)
 
 ## Test interaction_mx
@@ -24,7 +25,7 @@ error_vec <- y_j - covariates %*% gamma_j - responses %*% b_j0 -
 expected_error <- norm(error_vec, type = "F")^2 / (2 * n)
 test_error <- compute_residual(y_j, responses, covariates,
                                gamma_j, c(b_j0, beta_j0)) |>
-                sq_error_loss()
+                quad_loss()
 
 assert_that(are_equal(expected_error, test_error))
 

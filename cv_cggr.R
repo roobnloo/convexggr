@@ -4,17 +4,35 @@ source("cggr_node.R")
 #' @param y n vector of the response to solve
 #' @param reponses n x (d-1) matrix of the other responses
 #' @param covariates n x p matrix of covariates
+#' @param lambda_len length of penalty terms to search
+#' @param lambda_min_prop fraction of computed lambda max
 #' @param lambda_seq sequence of penalty terms
-cv_cggr <- function(y, responses, covariates, lambda_g, lambda_seq, alpha, nfold = 5) {
+#' The minimum lambda that yields all zero solutions is calculated by default.
+#' Computation can be overwritten by specifying lambda_seq explicitly.
+cv_cggr <- function(y, responses, covariates, lambda_g, alpha,
+                    nfold = 5,
+                    lambda_len = 20,
+                    lambda_min_prop = 0.1,
+                    lambda_seq = NULL) {
   stopifnot(is.matrix(responses),
             is.matrix(covariates),
             nrow(responses) == nrow(covariates),
             length(y) == nrow(covariates),
-            length(lambda_seq) > 0)
+            is.null(lambda_seq) || length(lambda_seq) > 0)
+
+  centered <- center_vars(y, responses, covariates)
+  y <- centered$y
+  responses <- centered$responses
+  covariates <- centered$covariates
+
+  if(is.null(lambda_seq)) {
+    lambda_max <- min_lambda_zero(y, responses, covariates, alpha)
+    lambda_seq <- rev(10^seq(log10(lambda_min_prop * lambda_max),
+                             log10(lambda_max), length = lambda_len))
+  }
 
   data_df <- as.data.frame(cbind(y, responses, covariates))
   kfold <- crossv_kfold(data_df, nfold)
-
   fold_mses <- matrix(NA, nrow = nfold, ncol = length(lambda_seq))
   for (i in seq_len(nfold)) {
     fold_mses[i, ] <- cv_cggr_fold(y, responses, covariates,
@@ -23,7 +41,9 @@ cv_cggr <- function(y, responses, covariates, lambda_g, lambda_seq, alpha, nfold
   }
 
   result <- apply(fold_mses, 2, mean)
-  return(result)
+  return(list(result = result,
+              lambda_seq = lambda_seq,
+              lambda_opt = lambda_seq[which.min(result)]))
 }
 
 #' @return Numeric vector of length(lambda_seq) giving test mse for a provided
@@ -64,4 +84,26 @@ cv_cggr_fold <- function(y, responses, covariates,
   }
 
   return(predict_mse)
+}
+
+min_lambda_zero <- function(y, responses, covariates, alpha) {
+  d <- ncol(responses) + 1
+  p <- ncol(covariates)
+
+  intx <- interaction_mx(responses, covariates)
+
+  lambda_grp <- numeric(p)
+  for (h in seq_along(p)) {
+    bh_idx <- h * (d - 1) + seq_len(d - 1)
+    quad_grad <- t(intx[, bh_idx]) %*% y / nrow(responses)
+    upper <- norm(quad_grad, "2") / alpha
+
+    piece_quad <- function(t) {
+      sum(soft_threshold(quad_grad, t * alpha)^2) - (1 - alpha)^2 * t^2
+    }
+
+    lambda_grp[h] <- uniroot(piece_quad, c(0, upper))$root
+  }
+
+  return(max(lambda_grp))
 }

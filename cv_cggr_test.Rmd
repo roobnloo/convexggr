@@ -12,7 +12,7 @@ library(patchwork)
 source("generate_data.R")
 source("cv_cggr.R")
 source("cggr.R")
-source("simulate_test_utils.R")
+source("test_utils.R")
 ```
 
 ```{r generate}
@@ -23,14 +23,13 @@ num <- 400
 s <- generate_data(num, d, p, ve = 0.3)
 trials <- 20
 lambda_g <- 0.08
-lambda_seq <- rev(10^seq(-3, log10(2), length = trials))
 alpha <- 0.95
 ```
 
 ```{r}
 node <- 3
 cv_result <- cv_cggr(s$responses[, node], s$responses[, -node],
-                     s$covariates, lambda_g, lambda_seq, alpha, nfold = 5)
+                     s$covariates, lambda_g, alpha, nfold = 5)
 ```
 
 ```{r}
@@ -42,10 +41,11 @@ abline(v = which.min(cv_result), col = "red")
 tuned_lambda_b <- numeric(length = d)
 for (i in seq_len(d)) {
   cv_result <- cv_cggr(s$responses[, i], s$responses[, -i], s$covariates,
-                       lambda_g, lambda_seq, alpha, nfold = 5)
-  plot(seq_along(lambda_seq), cv_result, type = "l", xlab = "lambda idx")
-  abline(v = which.min(cv_result), col = "red")
-  tuned_lambda_b[i] <- lambda_seq[which.min(cv_result)]
+                       lambda_g, alpha, nfold = 5, lambda_min_prop = 0.01)
+  lambda_seq <- cv_result$lambda_seq
+  plot(seq_along(lambda_seq), cv_result$result, type = "l", xlab = "lambda idx")
+  abline(v = which.min(cv_result$result), col = "red")
+  tuned_lambda_b[i] <- cv_result$lambda_opt
 }
 tuned_lambda_b
 ```

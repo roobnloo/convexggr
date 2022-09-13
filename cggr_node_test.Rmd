@@ -21,7 +21,13 @@ alpha <- 0.05 # 1 => lasso, 0 => group lasso
 s <- generate_data(num, d, p, ve = 0.3)
 node <- 3
 trials <- 10
-lambda_vals <- rev(10^seq(-2, log10(5), length = trials))
+```
+
+
+```{r determine_lambda}
+max_lambda <- 2
+lambda_vals <- rev(10^seq(log10(0.01 * max_lambda),
+                          log10(max_lambda), length = trials))
 ```
 
 ```{r}
@@ -58,7 +64,7 @@ my_opt_vals <- map(cggr_result, ~ .x$obj_val[length(.x$obj_val)]) |> reduce(c)
 
 
 ```{r plot}
-xlim = c(-4, 2)
+xlim = c(min(log(lambda_vals)), max(log(lambda_vals)))
 ylim = c(-.2, .2)
 ## Plot results
 for (k in c(0, seq_along(s$cov_nz_idx))) {
@@ -96,13 +102,13 @@ for (k in (1:p)[-s$cov_nz_idx]) {
   par(mfrow=c(1, 2))
   plot(0, 0, type = "n", main = "CVXR Reg Path",
        xlab = "Log Lambda", ylab = "Coefficients",
-       ylim = c(-0.2, 0.2), xlim = c(-4, 0))
+       ylim = ylim, xlim = xlim)
   abline(h=0, col = "gray80")
   matlines(log(lambda_vals), beta_vals[, beta_idx])
   
   plot(0, 0, type = "n", main = "My Reg Path",
        xlab = "Log Lambda", ylab = "Coefficients",
-       ylim = c(-0.2, 0.2), xlim = c(-4, 0))
+       ylim = ylim, xlim = xlim)
   abline(h=0, col = "gray80")
   matlines(log(lambda_vals), my_beta_vals[, beta_idx])
 }

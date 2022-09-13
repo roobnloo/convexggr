@@ -10,7 +10,7 @@ set.seed(100)
 library(tidyverse)
 source("cggr_node.R")
 source("generate_data.R")
-source("simulate_test_utils.R")
+source("test_utils.R")
 ```
 
 Generate data

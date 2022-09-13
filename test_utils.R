@@ -7,7 +7,7 @@ gamma_viz <- function(gamma_mx) {
                setNames(c("row", "col", "value"))
 
   ggplot(gamma_tbl, mapping = aes(x = col, y = row, fill = value)) +
-    geom_tile(color = "white") +
+    geom_tile(color = "gray30") +
     scale_fill_gradient2() +
     coord_fixed() +
     theme_minimal()
@@ -19,7 +19,7 @@ beta_viz <- function(beta_mx, title = "") {
            setNames(c("row", "col", "value"))
 
   ggplot(beta0, mapping = aes(x = col, y = row, fill = value)) +
-    geom_tile(color = "white") +
+    geom_tile(color = "gray30") +
     scale_fill_gradient2() +
     coord_fixed() +
     labs(title = title) +

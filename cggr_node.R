@@ -1,4 +1,5 @@
 library(purrr)
+source("utils.R")
 
 cggr_node <- function(y, responses, covariates,
                       lambda_g, lambda_b_seq, alpha,
@@ -156,7 +157,7 @@ apply_sparsegl_update <- function(bh_j, full_resid, covariate_h, responses,
   n <- nrow(responses)
   grp_intx_mx <- apply(responses, 2, function(x) x * covariate_h)
   grp_partial_resid <- full_resid + grp_intx_mx %*% bh_j
-  grp_thresh <- soft_threshold(t(grp_intx_mx) %*% grp_partial_resid,
+  grp_thresh <- soft_threshold(t(grp_intx_mx) %*% grp_partial_resid / n,
                                alpha * lambda)
 
   # If this subgradient condition holds, the entire group should be zero
@@ -235,20 +236,6 @@ apply_L1_update <- function(v, full_resid, design_mx, lambda) {
   list(v = v, full_resid = full_resid)
 }
 
-#' @return n x p(d-1) matrix representing interactions btw responses and covs
-interaction_mx <- function(responses, covariates) {
-  d <- ncol(responses) + 1
-  p <- ncol(covariates)
-  idx_mat <- as.matrix(expand.grid(seq_len(d - 1), seq_len(p)))
-
-  foo <- function(i) {
-    responses[, idx_mat[i, 1]] * covariates[, idx_mat[i, 2]]
-  }
-
-  map(seq_len(nrow(idx_mat)), foo) |>
-    reduce(cbind)
-}
-
 #' @return n-vector of residuals, where n = length(y)
 compute_residual <- function(y, responses, covariates, gamma_j, beta_j) {
   d <- ncol(responses) + 1
@@ -264,23 +251,4 @@ compute_residual <- function(y, responses, covariates, gamma_j, beta_j) {
 soft_threshold <- function(x, lambda) {
   stopifnot(length(lambda) == 1)
   sign(x) * pmax(abs(x) - lambda, 0)
-}
-
-#' @return variables with mean zero and sum-of-squares equal to nrow
-center_vars <- function(y, responses, covariates) {
-  stopifnot(length(y) == nrow(responses),
-            nrow(responses) == nrow(covariates))
-  n <- length(y)
-
-  scale_n <- function(t) {
-    sd(t) * sqrt((n - 1) / n)
-  }
-
-  y <- scale(y, scale = FALSE) # center, but do not scale y
-  responses <- scale(responses, scale = apply(responses, 2, scale_n))
-  covariates <- scale(covariates, scale = apply(covariates, 2, scale_n))
-
-  return(list(y = y,
-              responses = responses,
-              covariates = covariates))
 }

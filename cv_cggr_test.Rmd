@@ -23,7 +23,7 @@ num <- 400
 s <- generate_data(num, d, p, ve = 0.3)
 trials <- 20
 lambda_g <- 0.08
-alpha <- 0.95
+alpha <- 0.5
 ```
 
 ```{r}
@@ -33,8 +33,8 @@ cv_result <- cv_cggr(s$responses[, node], s$responses[, -node],
 ```
 
 ```{r}
-plot(seq_len(trials), cv_result, type = "l", xlab = "lambda idx")
-abline(v = which.min(cv_result), col = "red")
+plot(cv_result$lambda_seq, cv_result$result, type = "l", xlab = "lambda")
+abline(v = cv_result$lambda_opt, col = "red")
 ```
 
 ```{r}
@@ -42,9 +42,8 @@ tuned_lambda_b <- numeric(length = d)
 for (i in seq_len(d)) {
   cv_result <- cv_cggr(s$responses[, i], s$responses[, -i], s$covariates,
                        lambda_g, alpha, nfold = 5, lambda_min_prop = 0.01)
-  lambda_seq <- cv_result$lambda_seq
-  plot(seq_along(lambda_seq), cv_result$result, type = "l", xlab = "lambda idx")
-  abline(v = which.min(cv_result$result), col = "red")
+  plot(cv_result$lambda_seq, cv_result$result, type = "l", xlab = "lambda")
+  abline(v = cv_result$lambda_opt, col = "red")
   tuned_lambda_b[i] <- cv_result$lambda_opt
 }
 tuned_lambda_b
@@ -53,9 +52,6 @@ tuned_lambda_b
 
 ```{r}
 result <- convex_ggr(s$responses, s$covariates, lambda_g, tuned_lambda_b, alpha)
-```
-
-```{r}
 for (b_mx in result$beta_mxs) {
   print(beta_viz(b_mx))
 }

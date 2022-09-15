@@ -17,10 +17,7 @@ cggr_node <- function(y, responses, covariates,
   d <- ncol(responses) + 1
   p <- ncol(covariates)
 
-  # lambda_b_seq <- sort(lambda_b_seq, decreasing = T)
-
-  centered <- center_vars(y, responses, covariates)
-  y <- centered$y
+  centered <- center_vars(responses, covariates)
   responses <- centered$responses
   covariates <- centered$covariates
 
@@ -234,17 +231,6 @@ apply_L1_update <- function(v, full_resid, design_mx, lambda) {
   }
 
   list(v = v, full_resid = full_resid)
-}
-
-#' @return n-vector of residuals, where n = length(y)
-compute_residual <- function(y, responses, covariates, gamma_j, beta_j) {
-  d <- ncol(responses) + 1
-  W_j <- interaction_mx(responses, covariates)
-  x_gamma_j <- covariates %*% gamma_j # X gamma_j
-  y_b_j0 <- responses %*% beta_j[seq_len(d-1)] # Y_-j b_j^0
-  W_jbeta_j0 <- W_j %*% beta_j[-seq_len(d-1)] # W_-j beta_j,-0
-
-  return(y - x_gamma_j - y_b_j0 - W_jbeta_j0)
 }
 
 # Vectorized soft-threshold function

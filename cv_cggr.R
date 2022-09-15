@@ -20,8 +20,7 @@ cv_cggr <- function(y, responses, covariates, lambda_g, alpha,
             length(y) == nrow(covariates),
             is.null(lambda_seq) || length(lambda_seq) > 0)
 
-  centered <- center_vars(y, responses, covariates)
-  y <- centered$y
+  centered <- center_vars(responses, covariates)
   responses <- centered$responses
   covariates <- centered$covariates
 
@@ -68,8 +67,7 @@ cv_cggr_fold <- function(y, responses, covariates,
 
   # For each result in the list, predict on the test sample
   for (i in seq_along(fit_seq)) {
-    # Center the test response and center and scale the test covariates
-    y_test <- y[test_idx] - mean(y_train)
+    # Center and scale the test covariates
     responses_test <- responses[test_idx, ] |>
                       sweep(2, apply(responses_train, 2, mean), "-") |>
                       sweep(2, apply(responses_train, 2, sd_n), "/")
@@ -77,7 +75,7 @@ cv_cggr_fold <- function(y, responses, covariates,
                        sweep(2, apply(covariates_train, 2, mean), "-") |>
                        sweep(2, apply(covariates_train, 2, sd_n), "/")
 
-    resid <- compute_residual(y_test, responses_test, covariates_test,
+    resid <- compute_residual(y[test_idx], responses_test, covariates_test,
                               fit_seq[[i]]$gamma_j, fit_seq[[i]]$beta_j)
 
     predict_mse[i] <- mean(resid^2)
@@ -93,8 +91,8 @@ min_lambda_zero <- function(y, responses, covariates, alpha) {
   intx <- interaction_mx(responses, covariates)
 
   lambda_grp <- numeric(p)
-  for (h in seq_along(p)) {
-    bh_idx <- h * (d - 1) + seq_len(d - 1)
+  for (h in seq_len(p)) {
+    bh_idx <- (h - 1) * (d - 1) + seq_len(d - 1)
     quad_grad <- t(intx[, bh_idx]) %*% y / nrow(responses)
     upper <- norm(quad_grad, "2") / alpha
 

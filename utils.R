@@ -15,20 +15,28 @@ interaction_mx <- function(responses, covariates) {
 }
 
 #' @return variables with mean zero and sum-of-squares equal to nrow
-center_vars <- function(y, responses, covariates) {
-  stopifnot(length(y) == nrow(responses),
-            nrow(responses) == nrow(covariates))
-  n <- length(y)
+center_vars <- function(responses, covariates) {
+  stopifnot(nrow(responses) == nrow(covariates))
+  n <- nrow(responses)
 
   scale_n <- function(t) {
     sd(t) * sqrt((n - 1) / n)
   }
 
-  y <- scale(y, scale = FALSE) # center, but do not scale y
   responses <- scale(responses, scale = apply(responses, 2, scale_n))
   covariates <- scale(covariates, scale = apply(covariates, 2, scale_n))
 
-  return(list(y = y,
-              responses = responses,
+  return(list(responses = responses,
               covariates = covariates))
+}
+
+#' @return n-vector of residuals, where n = length(y)
+compute_residual <- function(y, responses, covariates, gamma_j, beta_j) {
+  d <- ncol(responses) + 1
+  W_j <- interaction_mx(responses, covariates)
+  x_gamma_j <- covariates %*% gamma_j # X gamma_j
+  y_b_j0 <- responses %*% beta_j[seq_len(d-1)] # Y_-j b_j^0
+  W_jbeta_j0 <- W_j %*% beta_j[-seq_len(d-1)] # W_-j beta_j,-0
+
+  return(y - x_gamma_j - y_b_j0 - W_jbeta_j0)
 }

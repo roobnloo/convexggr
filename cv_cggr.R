@@ -9,40 +9,51 @@ source("cggr_node.R")
 #' @param lambda_seq sequence of penalty terms
 #' The minimum lambda that yields all zero solutions is calculated by default.
 #' Computation can be overwritten by specifying lambda_seq explicitly.
-cv_cggr <- function(y, responses, covariates, lambda_g, alpha,
+cv_cggr <- function(y, responses, covariates, lambda_g,
                     nfold = 5,
-                    lambda_len = 20,
+                    alpha_seq = seq(0.1, 1, by = 0.1),
+                    lambda_len = 10,
                     lambda_min_prop = 0.1,
                     lambda_seq = NULL) {
   stopifnot(is.matrix(responses),
             is.matrix(covariates),
             nrow(responses) == nrow(covariates),
             length(y) == nrow(covariates),
+            all(alpha_seq > 0) && all(alpha_seq <= 1),
             is.null(lambda_seq) || length(lambda_seq) > 0)
 
   centered <- center_vars(responses, covariates)
   responses <- centered$responses
   covariates <- centered$covariates
 
+
   if(is.null(lambda_seq)) {
-    lambda_max <- min_lambda_zero(y, responses, covariates, alpha)
+    lambda_max <- max(
+              sapply(alpha_seq,
+                     function(a) min_lambda_zero(y, responses, covariates, a)))
     lambda_seq <- rev(10^seq(log10(lambda_min_prop * lambda_max),
                              log10(lambda_max), length = lambda_len))
   }
 
   data_df <- as.data.frame(cbind(y, responses, covariates))
   kfold <- crossv_kfold(data_df, nfold)
-  fold_mses <- matrix(NA, nrow = nfold, ncol = length(lambda_seq))
-  for (i in seq_len(nfold)) {
-    fold_mses[i, ] <- cv_cggr_fold(y, responses, covariates,
-                                   lambda_g, lambda_seq, alpha,
-                                   kfold$train[[i]]$idx, kfold$test[[i]]$idx)
+  fold_mses <- array(NA, dim = c(length(alpha_seq), lambda_len, nfold))
+  for (i in seq_along(alpha_seq)) {
+    for (j in seq_len(nfold)) {
+      fold_mses[i, , j] <- cv_cggr_fold(y, responses, covariates, lambda_g,
+                                        lambda_seq, alpha_seq[i],
+                                        kfold$train[[j]]$idx,
+                                        kfold$test[[j]]$idx)
+    }
   }
 
-  result <- apply(fold_mses, 2, mean)
-  return(list(result = result,
+  cv_error <- apply(fold_mses, c(1, 2), mean)
+  opt_idx <- which(cv_error == min(cv_error), arr.ind = T)[1, ]
+  return(list(cv_error = cv_error,
+              alpha_seq = alpha_seq,
               lambda_seq = lambda_seq,
-              lambda_opt = lambda_seq[which.min(result)]))
+              opt = list(alpha = alpha_seq[opt_idx[1]],
+                         lambda = lambda_seq[opt_idx[2]])))
 }
 
 #' @return Numeric vector of length(lambda_seq) giving test mse for a provided

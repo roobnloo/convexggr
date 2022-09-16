@@ -10,6 +10,7 @@ cggr_node <- function(y, responses, covariates,
             nrow(responses) == nrow(covariates),
             length(y) == nrow(covariates),
             lambda_g > 0,
+            length(alpha) == 1,
             alpha >= 0 && alpha <= 1,
             length(lambda_b_seq) > 0,
             all(lambda_b_seq > 0))

@@ -66,9 +66,12 @@ get_mvn_params <- function(i, cov_nz_idx, covariates, gamma_mx, b_mxs) {
 
 # Generates p x q matrix where sg are non-zero
 generate_mean_mx <- function(p, q, sg, val = 0.25) {
+  result <- matrix(0, p, q)
+  if (sg == 0) {
+    return(result)
+  }
   idx_sel <- expand.grid(seq_len(p), seq_len(q)) |>
                 slice_sample(n = sg)
-  result <- matrix(0, p, q)
   result[as.matrix(idx_sel)] <- val
   return(result)
 }

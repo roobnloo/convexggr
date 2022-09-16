@@ -1,75 +1,114 @@
 ---
-title: "Untitled"
-author: "Robin Liu"
-date: "2022-08-22"
+title: "CGGR simulations"
 output: html_document
 ---
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(modelr)
-library(patchwork)
 source("generate_data.R")
 source("cv_cggr.R")
 source("cggr.R")
 source("test_utils.R")
 ```
-
 ```{r generate}
-set.seed(100)
+set.seed(101)
 d <- 5
 p <- 10
 num <- 400
-s <- generate_data(num, d, p, ve = 0.3)
-trials <- 20
-lambda_g <- 0.08
-alpha <- 0.5
+s <- generate_data(num, d, p, ve = 0.1, sg = 0)
+lambda_g <- 1
 ```
-
-```{r}
-node <- 3
+```{r, eval = F, include = F}
+node <- 1
 cv_result <- cv_cggr(s$responses[, node], s$responses[, -node],
-                     s$covariates, lambda_g, alpha, nfold = 5)
+                     s$covariates, lambda_g)
+cv_result$opt
+cv_result_plot(cv_result)
 ```
-
-```{r}
-plot(cv_result$lambda_seq, cv_result$result, type = "l", xlab = "lambda")
-abline(v = cv_result$lambda_opt, col = "red")
-```
-
-```{r}
-tuned_lambda_b <- numeric(length = d)
+```{r, echo = F}
+set.seed(200)
+tuned_params <- matrix(NA, nrow = 2, ncol = d)
+rownames(tuned_params) <- c("alpha", "lambda")
+cv_results <- vector(mode = "list", length = d)
 for (i in seq_len(d)) {
   cv_result <- cv_cggr(s$responses[, i], s$responses[, -i], s$covariates,
-                       lambda_g, alpha, nfold = 5, lambda_min_prop = 0.01)
-  plot(cv_result$lambda_seq, cv_result$result, type = "l", xlab = "lambda")
-  abline(v = cv_result$lambda_opt, col = "red")
-  tuned_lambda_b[i] <- cv_result$lambda_opt
+                       lambda_g, nfold = 5, alpha_seq = seq(0.1, 1, by = 0.1),
+                       lambda_len = 10,
+                       lambda_min_prop = 0.1)
+  cv_results[[i]] <- cv_result
+  tuned_params[, i] <- unlist(cv_result$opt)
 }
-tuned_lambda_b
 ```
 
+### Result of cross validation
+```{r}
+for (cvr in cv_results) {
+  print(cv_result_plot(cvr))
+}
+# saveRDS(cv_results, "sim_out/cereal.out")
+tuned_params
+```
 
 ```{r}
-result <- convex_ggr(s$responses, s$covariates, lambda_g, tuned_lambda_b, alpha)
-for (b_mx in result$beta_mxs) {
+result <- convex_ggr(s$responses, s$covariates, lambda_g,
+                     tuned_params[2, ], tuned_params[1, ])
+# saveRDS(result, "sim_out/cggr.out")
+print(paste("TPR:", true_pos_rate(result$beta_mxs, s$b_mxs, s$cov_nz_idx)))
+print(paste("FPR:", round(1-true_neg_rate(result$beta_mxs, s$b_mxs, s$cov_nz_idx), 3)))
+```
+
+```{r, include = T}
+for (b_mx in result$asym_beta_mx) {
   print(beta_viz(b_mx))
 }
 ```
 
+### Compare component matrices
 ```{r}
 compute_idx <- c(1, 1 + s$cov_nz_idx)
 for (i in seq_along(s$b_mxs)) {
   cov_lbl <- paste0("component ", compute_idx[i] - 1)
-  computed <- beta_viz(result$beta_mxs[[compute_idx[i]]],
-                       paste("Computed", cov_lbl))
-  actual <- beta_viz(s$b_mxs[[i]], paste("Actual", cov_lbl))
-  print(computed + actual)
+  print(beta_viz_compare(result$beta_mxs[[compute_idx[i]]],
+                         s$b_mxs[[i]], cov_lbl))
 }
 ```
 
+```{r, eval = F, include = F, echo = F}
+result <- convex_ggr(s$responses, s$covariates, lg,
+                     tuned_params[2, ], tuned_params[1, ])
+print(gamma_viz_compare(result$gamma_mx, s$gamma_mx))
+```
 
-```{r}
-print(gamma_viz(result$gamma_mx))
-print(gamma_viz(s$gamma_mx))
+```{r, eval=F, include = F, echo = F}
+for(lg in seq(0.01, lambda_g, length = 5)) {
+  g_result <- convex_ggr(s$responses, s$covariates, lg,
+                       tuned_params[2, ], tuned_params[1, ])
+  print(gamma_viz_compare(g_result$gamma_mx, s$gamma_mx))
+}
+```
+
+## Running with fixed alpha = 0.95
+```{r, echo = F}
+set.seed(300)
+tuned_params1 <- matrix(NA, nrow = 2, ncol = d)
+rownames(tuned_params1) <- c("alpha", "lambda")
+for (i in seq_len(d)) {
+  cv_result <- cv_cggr(s$responses[, i], s$responses[, -i], s$covariates,
+                       lambda_g, nfold = 5, alpha_seq = 0.95,
+                       lambda_len = 15,
+                       lambda_min_prop = 0.1)
+  tuned_params1[, i] <- unlist(cv_result$opt)
+}
+print(tuned_params1)
+result1 <- convex_ggr(s$responses, s$covariates, lambda_g,
+                     tuned_params1[2, ], tuned_params1[1, ])
+print(paste("TPR:", true_pos_rate(result1$beta_mxs, s$b_mxs, s$cov_nz_idx)))
+print(paste("FPR:", 1-true_neg_rate(result1$beta_mxs, s$b_mxs, s$cov_nz_idx)))
+
+compute_idx <- c(1, 1 + s$cov_nz_idx)
+for (i in seq_along(s$b_mxs)) {
+  cov_lbl <- paste0("component ", compute_idx[i] - 1)
+  print(beta_viz_compare(result1$beta_mxs[[compute_idx[i]]],
+                         s$b_mxs[[i]], cov_lbl))
+}
 ```

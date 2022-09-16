@@ -5,8 +5,8 @@ source("cggr_node.R")
 #' @param covariates n x p matrix of covariates
 #' @param lambda_g numeric penalty for mean vector
 #' @param lambda_b_seq vector of d penalties for each response
-#' @param alpha value between 0 and 1 that determines sparse group lasso penalty
-convex_ggr <- function(responses, covariates, lambda_g, lambda_b_seq, alpha,
+#' @param alpha_seq values between 0 and 1 that determines sparse group lasso penalty
+convex_ggr <- function(responses, covariates, lambda_g, lambda_b_seq, alpha_seq,
                        max_iter = 1000,
                        tol = 1e-5) {
   stopifnot(is.matrix(responses),
@@ -15,7 +15,7 @@ convex_ggr <- function(responses, covariates, lambda_g, lambda_b_seq, alpha,
             lambda_g >= 0,
             all(lambda_b_seq >= 0),
             length(lambda_b_seq) == ncol(responses),
-            0 <= alpha && alpha <= 1)
+            all(alpha_seq >= 0, alpha_seq <= 1))
 
   d <- ncol(responses)
   p <- ncol(covariates)
@@ -32,7 +32,7 @@ convex_ggr <- function(responses, covariates, lambda_g, lambda_b_seq, alpha,
 
   for (i in seq_len(d)) {
     result <- cggr_node(responses[, i], responses[, -i], covariates,
-                        lambda_g, lambda_b_seq[i], alpha, max_iter, tol)[[1]]
+                        lambda_g, lambda_b_seq[i], alpha_seq[i], max_iter, tol)[[1]]
     gamma_mx[i, ] <- result$gamma_j
     beta <- result$beta_j
 
@@ -54,11 +54,15 @@ convex_ggr <- function(responses, covariates, lambda_g, lambda_b_seq, alpha,
     }
   }
 
+  symmed_beta_mxs <-  map(seq_len(p + 1), ~ matrix(nrow = d, ncol = d))
   for (h in seq_len(p + 1)) {
-    beta_mxs[[h]] <- symmetrize(beta_mxs[[h]])
+    symmed_beta_mxs[[h]] <- symmetrize(beta_mxs[[h]])
   }
 
-  return(list(gamma_mx = gamma_mx, beta_mxs = beta_mxs, sigma_sq = est_vars))
+  return(list(gamma_mx = gamma_mx,
+              beta_mxs = symmed_beta_mxs,
+              asym_beta_mx = beta_mxs,
+              sigma_sq = est_vars))
 }
 
 #' @param covariate p-vector of observation of covariates.

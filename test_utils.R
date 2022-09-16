@@ -23,17 +23,24 @@ gamma_viz_compare <- function(computed, actual) {
   computed_plot + actual_plot
 }
 
-beta_viz <- function(beta_mx, title = "", limits = NULL) {
+beta_viz <- function(beta_mx, title = "", limits = NULL, guides = T) {
   beta0 <- as_tibble(cbind(expand.grid(rev(seq_len(d)), seq_len(d)),
                            c(beta_mx))) |>
            setNames(c("row", "col", "value"))
 
-  ggplot(beta0, mapping = aes(x = col, y = row, fill = value)) +
-    geom_tile(color = "gray30") +
-    scale_fill_gradient2(limits = limits) +
-    coord_fixed() +
-    labs(title = title) +
-    theme_minimal()
+  tilecolor <- ifelse(guides, "gray30", "white")
+  p <- ggplot(beta0, mapping = aes(x = col, y = row, fill = value)) +
+        geom_tile(color = tilecolor) +
+        scale_fill_gradient2(limits = limits) +
+        coord_fixed() +
+        labs(title = title) +
+        theme_minimal()
+  if (!guides) {
+    p <- p + guides(x = "none", y = "none", fill = "none") +
+          labs(x = NULL, y = NULL)
+  }
+
+  return(p)
 }
 
 beta_viz_compare <- function(computed, actual, cov_lbl) {
@@ -45,25 +52,29 @@ beta_viz_compare <- function(computed, actual, cov_lbl) {
   comp + act
 }
 
-cv_result_plot <- function(cv_result) {
+cv_result_plot <- function(cv_result, guides = T) {
   df <- expand.grid(alpha = seq_along(cv_result$alpha_seq),
                     lambda = seq_along(cv_result$lambda_seq))
   df$error <- as.numeric(cv_result$cv_error)
   opt_lambda_idx <- which(cv_result$lambda_seq == cv_result$opt$lambda)
   opt_alpha_idx <- which(cv_result$alpha == cv_result$opt$alpha)
-  ggplot(df) +
-    geom_tile(color = "gray80",
-              mapping = aes(x = alpha, y = lambda, fill = error)) +
-    geom_point(mapping = aes(x = x, y = y),
-               data = data.frame(x = opt_alpha_idx, y = opt_lambda_idx),
-               color = "tomato") +
-    scale_x_continuous(breaks = seq_along(cv_result$alpha_seq),
-                       labels = cv_result$alpha_seq) +
-    scale_y_reverse(breaks = seq_along(cv_result$lambda_seq),
-                       labels = round(cv_result$lambda_seq, 3)) +
-    scale_fill_gradient(low = "white", high = "black") +
-    coord_fixed() +
-    theme_classic()
+  p <- ggplot(df) +
+        geom_tile(color = "gray80",
+                  mapping = aes(x = alpha, y = lambda, fill = error)) +
+        geom_point(mapping = aes(x = x, y = y),
+                   data = data.frame(x = opt_alpha_idx, y = opt_lambda_idx),
+                   color = "tomato") +
+        scale_x_continuous(breaks = seq_along(cv_result$alpha_seq),
+                           labels = cv_result$alpha_seq) +
+        scale_y_reverse(breaks = seq_along(cv_result$lambda_seq),
+                           labels = round(cv_result$lambda_seq, 3)) +
+        scale_fill_gradient(low = "white", high = "black") +
+        coord_fixed() +
+        theme_classic()
+  if (!guides) {
+    p <- p + guides(x = "none", y = "none", fill = "none")
+  }
+  return(p)
 }
 
 #' @return true rate of zero coefficients excluding diagonals

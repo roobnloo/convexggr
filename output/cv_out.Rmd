@@ -1,0 +1,89 @@
+---
+title: "CGGR simulations"
+author: "Robin Liu"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(modelr)
+library(patchwork)
+source("../generate_data.R")
+source("../test_utils.R")
+```
+
+### Parameters
+$d=25$ nodes, $p=50$ covariates, $n=400$ observations.
+
+```{r, include = F}
+set.seed(100)
+d <- 25
+p <- 50
+num <- 400
+s <- generate_data(num, d, p, ve = 0.01, sg = 0)
+lambda_g <- 1
+```
+
+### Result of CV
+```{r, echo = F, fig.dim=c(13, 5)}
+cv_results <- readRDS("cerealbig.out")
+d <- length(cv_results)
+map(cv_results, ~ cv_result_plot(.x, guides = F)) |> reduce(`+`) + 
+  plot_layout(ncol = 13)
+```
+
+```{r, include = F, eval = F}
+for (cvr in cv_results) {
+  print(cv_result_plot(cvr))
+}
+```
+
+Selected parameters:
+```{r, echo = F}
+tuned_params <- map(cv_results, ~.x$opt) |> reduce(cbind)
+colnames(tuned_params) <- NULL
+tuned_params
+```
+
+Result with selected parameters
+```{r, echo = F}
+result <- readRDS("bigcggr.out")
+print(paste("TPR:", true_pos_rate(result$beta_mxs, s$b_mxs, s$cov_nz_idx)))
+print(paste("FPR:", round(1-true_neg_rate(result$beta_mxs, s$b_mxs, s$cov_nz_idx), 3)))
+```
+
+
+```{r, eval = F, include = F}
+compute_idx <- c(1, 1 + s$cov_nz_idx)
+for (i in seq_along(s$b_mxs)) {
+  cov_lbl <- paste0("component ", compute_idx[i] - 1)
+  print(beta_viz_compare(result$beta_mxs[[compute_idx[i]]],
+                         s$b_mxs[[i]], cov_lbl))
+}
+```
+
+### Compare true positive component matrices {.tabset}
+```{r, results="asis", echo = F, fig.dim=c(10, 5)}
+compute_idx <- c(1, 1 + s$cov_nz_idx)
+for (i in seq_along(s$b_mxs)) {
+  cat("\n#### comp", compute_idx[i] - 1, "\n")
+  cov_lbl <- paste0("component ", compute_idx[i] - 1)
+  cat("\n")
+  b <- beta_viz_compare(result$beta_mxs[[compute_idx[i]]],
+                         s$b_mxs[[i]], cov_lbl)
+  print(b)
+  cat("\n")
+}
+```
+
+### All component matrices {.tabset}
+```{r, results="asis", echo = F, fig.dim=c(15, 7)}
+for (i in seq(1, 41, by = 10)) {
+  cat("\n#### group", i - 1, "\n")
+  p <- map(result$beta_mxs[i:(i + 9)], ~ beta_viz(.x, guides = F)) |>
+        reduce(`+`) +
+        plot_layout(ncol = 5)
+  print(p)
+  cat("\n")
+}
+```

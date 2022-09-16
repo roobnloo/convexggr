@@ -6,60 +6,72 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(modelr)
 library(patchwork)
-source("../generate_data.R")
-source("../test_utils.R")
+source("generate_data.R")
+source("test_utils.R")
+source("run_cggr.R")
 ```
 
 ### Parameters
-$d=25$ nodes, $p=50$ covariates, $n=400$ observations.
-
-```{r, include = F}
+```{r, include = F, eval = F}
 set.seed(100)
-d <- 25
-p <- 50
-num <- 400
-s <- generate_data(num, d, p, ve = 0.01, sg = 0)
+d <- 5
+p <- 10
+num <- 200
+s <- generate_data(num, d, p, ve = 0.1, sg = 0)
 lambda_g <- 1
+out_path = "output/run.out"
+```
+
+```{r, include = F, eval = F}
+run_result <- run(s, alpha_seq = seq(0.1, 1, by = 0.05), lambda_len = 15,
+                  lambda_g = lambda_g, out_path = out_path)
 ```
 
 ### Result of CV
 ```{r, echo = F, fig.dim=c(13, 5)}
-cv_results <- readRDS("cerealbig.out")
-d <- length(cv_results)
-map(cv_results, ~ cv_result_plot(.x, guides = F)) |> reduce(`+`) + 
+run_result <- readRDS(out_path)
+cv_result <- run_result$cv_result
+tuned_params <- run_result$tuned
+cggr_result <- run_result$cggr_result
+```
+
+```{r, echo = F, fig.dim=c(13, 5)}
+map(cv_result, ~ cv_result_plot(.x, guides = F)) |> reduce(`+`) + 
   plot_layout(ncol = 13)
 ```
 
-```{r, include = F, eval = F}
-for (cvr in cv_results) {
+```{r, eval = F}
+for (cvr in cv_result) {
   print(cv_result_plot(cvr))
 }
 ```
 
-Selected parameters:
-```{r, echo = F}
-tuned_params <- map(cv_results, ~.x$opt) |> reduce(cbind)
-colnames(tuned_params) <- NULL
-tuned_params
-```
-
 Result with selected parameters
 ```{r, echo = F}
-result <- readRDS("bigcggr.out")
-print(paste("TPR:", true_pos_rate(result$beta_mxs, s$b_mxs, s$cov_nz_idx)))
-print(paste("FPR:", round(1-true_neg_rate(result$beta_mxs, s$b_mxs, s$cov_nz_idx), 3)))
+print(paste("TPR:",
+            true_pos_rate(cggr_result$beta_mxs, s$b_mxs, s$cov_nz_idx)))
+print(paste("FPR:",
+            round(1-true_neg_rate(cggr_result$beta_mxs, s$b_mxs, s$cov_nz_idx), 3)))
 ```
 
-
-```{r, eval = F, include = F}
+```{r, eval = F}
 compute_idx <- c(1, 1 + s$cov_nz_idx)
 for (i in seq_along(s$b_mxs)) {
   cov_lbl <- paste0("component ", compute_idx[i] - 1)
-  print(beta_viz_compare(result$beta_mxs[[compute_idx[i]]],
+  print(beta_viz_compare(cggr_result$beta_mxs[[compute_idx[i]]],
                          s$b_mxs[[i]], cov_lbl))
 }
+```
+
+```{r beta_plots}
+for (b_mx in cggr_result$asym_beta_mx) {
+  print(beta_viz(b_mx))
+}
+```
+
+```{r}
+print(gamma_viz_compare(cggr_result$gamma_mx, s$gamma_mx))
 ```
 
 ### Compare true positive component matrices {.tabset}

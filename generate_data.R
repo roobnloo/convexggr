@@ -1,4 +1,5 @@
-library(tidyverse)
+library(dplyr)
+library(purrr)
 library(igraph)
 
 #' @param n number of observations
@@ -10,7 +11,8 @@ library(igraph)
 #' @return a n x p matrix of responses, n x q matrix of covariates,
 #' gamma matrix determining the mean, b matrices determining the precision mx,
 #' and indices of the covariates with non-zero effects.
-generate_data <- function(n, p, q, qe = 5, ve = 0.01, sg = p * q * 0.1) {
+generate_data <- function(n, p, q, qe = 5, ve = 0.01, sg = p * q * 0.1,
+                          reparametrize = T) {
   # Generate the true parameters, gamma and beta
   gamma_mx <- generate_mean_mx(p, q, sg)
   b_mxs <- generate_coef_mxs(p, qe, ve)
@@ -27,7 +29,8 @@ generate_data <- function(n, p, q, qe = 5, ve = 0.01, sg = p * q * 0.1) {
 
   # Generate the p responses
   generate_response <- function(i) {
-    mvn_params <- get_mvn_params(i, cov_nz_idx, covariates, gamma_mx, b_mxs)
+    mvn_params <- get_mvn_params(i, cov_nz_idx, covariates, gamma_mx, b_mxs,
+                                 reparametrize)
     response <- rMVNormP(1, mvn_params$mean_vec, mvn_params$prec_mx)
     dim(response) <- NULL
     return(response)
@@ -48,20 +51,20 @@ generate_data <- function(n, p, q, qe = 5, ve = 0.01, sg = p * q * 0.1) {
 
 #' @param i index out of n observations
 #' @return mean vector and precision matrix for ith response
-get_mvn_params <- function(i, cov_nz_idx, covariates, gamma_mx, b_mxs) {
-
-  # Reparametrized mean vector
-  little_theta <- gamma_mx %*% as.numeric(covariates[i, ])
-
-  # Reparametrized precision matrix
-  big_theta <- map2(b_mxs, c(1, as.numeric(covariates[i, cov_nz_idx])), `*`) |>
+get_mvn_params <- function(i, cov_nz_idx, covariates, gamma_mx, b_mxs,
+                           reparametrize) {
+  mean_param <- gamma_mx %*% as.numeric(covariates[i, ])
+  prec_param <- map2(b_mxs, c(1, as.numeric(covariates[i, cov_nz_idx])), `*`) |>
                reduce(`+`)
+  diag(prec_param) <- 1
 
-  prec_mx <- -big_theta
-  diag(prec_mx) <- 1
-  mean_vec <- solve(prec_mx) %*% little_theta
+  if (reparametrize) {
+    diag(prec_param) <- -1
+    prec_param <- -prec_param # Actually -diag(Omega), but this equals 1
+    mean_param <- solve(prec_param) %*% mean_param # this also contains diag(Omega)
+  }
 
-  list(mean_vec = mean_vec, prec_mx = prec_mx)
+  list(mean_vec = mean_param, prec_mx = prec_param)
 }
 
 # Generates p x q matrix where sg are non-zero

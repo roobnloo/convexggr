@@ -1,6 +1,7 @@
 library(dplyr)
 library(purrr)
 library(igraph)
+library(mvtnorm)
 
 #' @param n number of observations
 #' @param p number of responses
@@ -19,19 +20,22 @@ generate_data <- function(n, p, q, qe = 5, ve = 0.01, sg = p * q * 0.1,
 
   # Generate the q covariates
   cov_idx <- seq_len(q)
-  cov_nz_idx <- sort(sample(cov_idx, qe)) # indices of non-zero effect covs
-  cov_disc_idx <- sort(sample(cov_idx, q/2)) # indices of discrete covs
+  cov_nz_idx <- seq_len(qe) # indices of non-zero effect covs
+  cov_disc_idx <- sort(sample(cov_idx, floor(q/2))) # indices of discrete covs
   covariates <- vector(mode = "list", length = q)
-  covariates[cov_disc_idx] <- map(seq_len(q/2), ~ sample(0:1, n, replace = T))
-  covariates[-cov_disc_idx] <- map(seq_len(q/2), ~ runif(n))
+  covariates[cov_disc_idx] <- map(seq_len(floor(q/2)), ~ sample(0:1, n, replace = T))
+  covariates[-cov_disc_idx] <- map(seq_len(ceiling(q/2)), ~ runif(n))
   covariates <- matrix(unlist(covariates), nrow = n, ncol = q)
+  covariates <- scale(covariates)
   colnames(covariates) <- paste0("u", seq_len(q), sep = "")
 
   # Generate the p responses
   generate_response <- function(i) {
     mvn_params <- get_mvn_params(i, cov_nz_idx, covariates, gamma_mx, b_mxs,
                                  reparametrize)
-    response <- rMVNormP(1, mvn_params$mean_vec, mvn_params$prec_mx)
+    # response <- rMVNormP(1, mvn_params$mean_vec, mvn_params$prec_mx)
+    response <- rmvnorm(1, mean = mvn_params$mean_vec,
+                           sigma = solve(mvn_params$prec_mx))
     dim(response) <- NULL
     return(response)
   }
@@ -43,7 +47,6 @@ generate_data <- function(n, p, q, qe = 5, ve = 0.01, sg = p * q * 0.1,
   # Bind p responses and q covariates into the result
   result <- list(responses = responses,
                  covariates = covariates,
-                 cov_nz_idx = cov_nz_idx,
                  gamma_mx = gamma_mx,
                  b_mxs = b_mxs)
   return(result)

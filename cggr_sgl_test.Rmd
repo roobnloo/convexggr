@@ -10,51 +10,19 @@ knitr::opts_chunk$set(echo = TRUE)
 source("generate_data.R")
 source("cggr_sgl.R")
 source("test_utils.R")
+library(rTensor)
 ```
 
-```{r generate}
+```{r}
 set.seed(103)
-d <- 25
+d <- 25 
 p <- 50
-num <- 200
-s <- generate_data(num, d, p, ve = 0.01, sg = 0, reparametrize = F)
+n <- 200
+s <- generate_data(n, d, p, ve = 0.01, sg = 0, reparametrize = F)
 ```
 
 ```{r}
-node <- 3
-mx <- cbind(s$responses[, -node],
-            interaction_mx(s$responses[, -node], s$covariates))
-
-# There are (p + 1) groups and the size of each group is d-1
-grp_idx <- rep(1:(p + 1), each = d-1)
-cv_result <- cv.sparsegl(mx, s$responses[, node], grp_idx,
-                         asparse = 0.95,
-                         pf_group = c(0, rep(sqrt(d-1), p)),
-                         # pf_group = c(0, rep(1, p)),
-                         intercept = F)
-```
-
-```{r}
-sgl_result <- cggr_sgl(s$responses, s$covariates, 0.5, reparametrize = F)
-```
-
-```{r}
-true_pos_rate(sgl_result$beta_mxs, s$b_mxs, 1:(length(s$b_mxs) - 1))
-1-true_neg_rate(sgl_result$beta_mxs, s$b_mxs, s$cov_nz_idx)
-```
-
-```{r}
-tprmx <- matrix(NA, 2, 10)
-colnames(tprmx) <- (1:10)/10
-for (i in 1:10)
-{
-  sgl_result <- cggr_sgl(s$responses, s$covariates, i/10)
-  tprmx[1, i] <- true_pos_rate(sgl_result$beta_mxs, s$b_mxs, s$cov_nz_idx)
-  tprmx[2, i] <- round(1-true_neg_rate(sgl_result$beta_mxs, s$b_mxs, s$cov_nz_idx), 3)
-  # print(paste("TPR:", true_pos_rate(sgl_result$beta_mxs, s$b_mxs, s$cov_nz_idx)))
-  # print(paste("FPR:", round(1-true_neg_rate(sgl_result$beta_mxs, s$b_mxs, s$cov_nz_idx), 3)))
-}
-tprmx
+sgl_result <- cggr_sgl(s$responses, s$covariates, 0.75, reparametrize = F)
 ```
 
 ### Compare component matrices
@@ -66,6 +34,12 @@ for (i in seq_along(s$b_mxs)) {
                          s$b_mxs[[i]], cov_lbl))
 }
 ```
+
+```{r}
+print(paste("TPR:", true_pos_rate(sgl_result$beta_mxs, s$b_mxs, s$cov_nz_idx)))
+print(paste("FPR:", round(1-true_neg_rate(sgl_result$beta_mxs, s$b_mxs, s$cov_nz_idx), 3)))
+```
+
 
 
 ```{r beta_plots}

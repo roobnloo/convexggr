@@ -7,7 +7,7 @@ source("utils.R")
 #' @param lambda_b_seq vector of d penalties for each response
 #' @param alpha_seq values between 0 and 1 that determines sparse group lasso penalty
 cggr_sgl <- function(responses, covariates, alpha_seq, reg_gamma = 0.01,
-                     reparametrize = T) {
+                     reparametrize = T, lambda_seq = NULL, tune = T) {
   stopifnot(is.matrix(responses),
             is.matrix(covariates),
             nrow(responses) == nrow(covariates),
@@ -27,22 +27,34 @@ cggr_sgl <- function(responses, covariates, alpha_seq, reg_gamma = 0.01,
   est_vars <- vector(length = d)
 
   for (node in seq_len(d)) {
+    y <- scale(responses[, node], scale = F)
     mx <- cbind(responses[, -node],
                 interaction_mx(responses[, -node], covariates))
 
     # There are (p + 1) groups and the size of each group is d-1
     grp_idx <- rep(1:(p + 1), each = d-1)
-    cv_result <- cv.sparsegl(mx, responses[, node], grp_idx,
-                             asparse = alpha_seq,
-                             # pf_group = c(0, rep(sqrt(d-1), p)),
-                             pf_group = c(0, rep(1, p)),
-                             intercept = F)
+
+    if (tune) {
+      cv_result <- cv.sparsegl(mx, y, grp_idx,
+                               asparse = alpha_seq,
+                               # lambda = lambda_seq[node],
+                               nlambda = 100,
+                               # pf_group = c(0, rep(sqrt(d-1), p)),
+                               pf_group = c(0, rep(1, p)),
+                               nfolds = 5,
+                               intercept = F,
+                               standardize = F)
+    } else {
+     cv_result <- sparsegl(mx, y, grp_idx, lambda = lambda_seq[node], asparse = 0.75,
+                           intercept = F, standardize = F, pf_group = c(0, rep(1, p)))
+    }
 
     # gamma_mx[node, ] <- result$gamma_j
     # ignore the intercept fitted below with -1
-    beta <- as.numeric(coef(cv_result, s = "lambda.min"))[-1]
+    lambda <- ifelse(is.null(lambda_seq), "lambda.min", lambda_seq[node])
+    beta <- as.numeric(coef(cv_result, s = lambda))[-1]
 
-    rss <- sum((responses[, node] - predict(cv_result, mx,s = "lambda.min"))^2)
+    rss <- sum((y - predict(cv_result, mx,s = lambda))^2)
     num_nz <- sum(abs(beta) > 1e-10) # add gamma to this later
     est_vars[node] <- rss  / (nrow(responses) - num_nz)
 

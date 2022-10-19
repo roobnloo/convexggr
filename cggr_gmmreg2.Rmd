@@ -1,0 +1,82 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("generate_data.R")
+source("data_generation.R")
+source("cggr_sgl.R")
+source("test_utils.R")
+library(rTensor)
+library(R.matlab)
+library(matlabr)
+library(abind)
+```
+
+```{r}
+set.seed(100)
+d <- 25 
+p <- 50
+n <- 200
+qe <- 5
+load("tB.RData")
+s <- generate_data(n, d, p, tB)
+truebetalist <- apply(tB, 3, function(t) t, simplify = F)
+
+writeMat("GMMReg/GMMReg/gen.mat",
+         resp = s$X,
+         covar = s$U)
+```
+
+```{r}
+run_matlab_script(paste0(getwd(), "/GMMReg/GMMReg/testSerious.m"))
+```
+
+Using GMMReg (matlab)
+```{r}
+bhat <- readMat("GMMReg/GMMReg/genresult.mat")[[1]]
+tuned <- readMat("GMMReg/GMMReg/tunedlambda.mat")$tune
+tunedlambda <- tuned[,1]
+tunedalpha <- tuned[,2]
+bhatlist <- apply(bhat, 3, function(t) t, simplify = F)
+
+tpr = sum((bhat!=0)*(tB!=0))/sum(tB!=0); 
+fpr = sum((bhat!=0)*(tB==0))/(sum((bhat!=0)*(tB==0))+sum(tB==0));
+print(paste("TPR:", tpr))
+print(paste("FPR:", fpr))
+
+# print(paste("TPR:", true_pos_rate(resultlist, s$b_mxs, s$cov_nz_idx)))
+# print(paste("FPR:", round(1-true_neg_rate(resultlist, s$b_mxs, s$cov_nz_idx), 3)))
+```
+
+Using sparsegl
+```{r}
+sgl_result <- cggr_sgl(s$X, s$U, 0.75, reparametrize = F)
+print(paste("TPR:", true_pos_rate(sgl_result$beta_mxs, truebetalist[1:(qe+1)], qe)))
+print(paste("FPR:", round(1-true_neg_rate(sgl_result$beta_mxs, truebetalist[1:(qe+1)], qe), 3)))
+```
+
+
+### Compare sparsegl component matrices
+```{r compare components}
+compute_idx <- c(1, 1 + s$cov_nz_idx)
+for (i in seq_len(qe+1)) {
+  cov_lbl <- paste0("component ", compute_idx[i] - 1)
+  print(beta_viz_compare(sgl_result$beta_mxs[[i]],
+                         truebetalist[[i]], cov_lbl, tileborder = F))
+}
+```
+
+
+### Compare GMMReg (matlab) component matrices
+```{r compare components}
+for (i in 1:6) {
+  cov_lbl <- paste("component", i)
+  print(beta_viz_compare(bhatlist[[i]],
+                         truebetalist[[i]], cov_lbl, tileborder = F))
+}
+```
+
+```{r}
+for (i in 1:10) {
+  print(beta_viz(resultlist[[i]]))
+}
+```
+

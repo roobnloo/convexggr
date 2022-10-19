@@ -44,18 +44,13 @@ compute_residual <- function(y, responses, covariates, gamma_j, beta_j) {
 #' @return symmetrized version of matrix mx
 #' result_ij = result_ji is nonzero iff both mx_ij and mx_ji are nonzero,
 #' in which case we choose the smaller value in magnitude.
-symmetrize <- function(mx) {
-  ut <- mx[upper.tri(mx)]
-  lt <- t(mx)[upper.tri(mx)]
-
-  symmed <- unlist(map2(ut, lt, symm_help))
-  mx[upper.tri(mx)] <- symmed
-  for(i in seq_len(nrow(mx))) {
-    for(j in seq_len(i - 1)){
-      mx[i, j] <- mx[j, i]
-    }
+symmetrize <- function(mx, rule = "and") {
+  if (rule == "and") {
+    result <- mx * (abs(mx) < t(abs(mx))) + t(mx) * (t(abs(mx)) < abs(mx))
+  } else {
+    result <- mx * (abs(mx) >= t(abs(mx))) + t(mx) * (t(abs(mx)) >= abs(mx))
   }
-  return(mx)
+  return(result)
 }
 
 symm_help <- function(x, y) {

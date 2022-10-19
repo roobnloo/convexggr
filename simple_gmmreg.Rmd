@@ -1,0 +1,114 @@
+---
+title: "Untitled"
+author: "Robin Liu"
+date: '2022-07-28'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("generate_data.R")
+source("cggr_sgl.R")
+source("test_utils.R")
+library(rTensor)
+library(abind)
+```
+
+```{r generate}
+set.seed(103)
+d <- 25 
+p <- 25
+n <- 100
+```
+
+```{r generate}
+set.seed(103)
+tB <- array(0, dim = c(d, d, p + 1))
+for (i in 2:4) {
+  for (j in c(1, 3, 5)) {
+    tB[j, j+1, i] = 0.3
+    tB[j+1, j, i] = 0.3
+  }
+}
+tB <- as.tensor(tB)
+resp <- read.csv("GMMReg/GMMReg/responses.txt", header = F) |> as.matrix()
+covar <- read.csv("GMMReg/GMMReg/covariates.txt", header = F) |> as.matrix()
+pretuned <- read.csv("GMMReg/GMMReg/lambdaseq.txt", header = F)
+pretuned <- unlist(pretuned)
+```
+
+```{r run}
+sgl_result <- cggr_sgl(resp, covar, 0.75, reparametrize = T, lambda_seq = pretuned)
+```
+
+```{r}
+Bhat <- abind(sgl_result$beta_mxs, along = 3)
+tpr <- sum((Bhat != 0) * (tB@data != 0)) / sum(tB@data != 0)
+fpr <- sum((Bhat != 0) * (tB@data == 0)) / (sum((Bhat != 0) * (tB@data == 0)) + sum(tB@data == 0))
+```
+
+
+```{r}
+tBlist <- apply(tB@data, 3, function(t) t, simplify = F)
+```
+
+```{r compare components}
+for (i in 1:6) {
+  print(beta_viz_compare(sgl_result$beta_mxs[[i]][1:10, 1:10],
+                         tBlist[[i]][1:10, 1:10], "", tileborder = F))
+}
+```
+
+```{r}
+node <- 3
+mx <- cbind(s$responses[, -node],
+            interaction_mx(s$responses[, -node], s$covariates))
+
+# There are (p + 1) groups and the size of each group is d-1
+grp_idx <- rep(1:(p + 1), each = d-1)
+cv_result <- cv.sparsegl(mx, s$responses[, node], grp_idx,
+                         asparse = 0.95,
+                         pf_group = c(0, rep(sqrt(d-1), p)),
+                         # pf_group = c(0, rep(1, p)),
+                         intercept = F)
+```
+
+```{r}
+sgl_result <- cggr_sgl(s$responses, s$covariates, 0.1, reparametrize = F)
+```
+
+```{r}
+true_pos_rate(sgl_result$beta_mxs, tBlist, 1:(length(tBlist) - 1))
+1-true_neg_rate(sgl_result$beta_mxs, tBlist, 1:50)
+```
+
+```{r}
+tprmx <- matrix(NA, 2, 10)
+colnames(tprmx) <- (1:10)/10
+for (i in 1:10)
+{
+  sgl_result <- cggr_sgl(s$responses, s$covariates, i/10)
+  tprmx[1, i] <- true_pos_rate(sgl_result$beta_mxs, s$b_mxs, s$cov_nz_idx)
+  tprmx[2, i] <- round(1-true_neg_rate(sgl_result$beta_mxs, s$b_mxs, s$cov_nz_idx), 3)
+  # print(paste("TPR:", true_pos_rate(sgl_result$beta_mxs, s$b_mxs, s$cov_nz_idx)))
+  # print(paste("FPR:", round(1-true_neg_rate(sgl_result$beta_mxs, s$b_mxs, s$cov_nz_idx), 3)))
+}
+tprmx
+```
+
+### Compare component matrices
+```{r compare components}
+compute_idx <- c(1, 1 + s$cov_nz_idx)
+for (i in seq_along(s$b_mxs)) {
+  cov_lbl <- paste0("component ", compute_idx[i] - 1)
+  print(beta_viz_compare(sgl_result$beta_mxs[[compute_idx[i]]],
+                         s$b_mxs[[i]], cov_lbl))
+}
+```
+
+
+```{r beta_plots}
+for (b_mx in sgl_result$beta_mx) {
+  print(beta_viz(b_mx))
+}
+```

@@ -3,3 +3,10 @@
 .RData
 .Ruserdata
 sandbox/
+GMMReg/
+GMMReg.zip
+InputStreamByteWrapper.class
+MatlabServer.m
+gen.mat
+data_generation.R
+tB.RData

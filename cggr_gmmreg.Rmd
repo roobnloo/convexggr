@@ -1,0 +1,69 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("generate_data.R")
+source("cggr_sgl.R")
+source("test_utils.R")
+library(rTensor)
+library(R.matlab)
+library(matlabr)
+library(abind)
+```
+
+```{r}
+set.seed(6)
+d <- 25 
+p <- 50
+n <- 200
+qe <- 5
+s <- generate_data(n, d, p, ve = 0.01, sg = 0, qe = 5, reparametrize = F)
+# s$responses <- scale(s$responses)
+# beta <- array(0, dim = c(d, d, p + 1))
+# beta[,,c(1, 1 + s$cov_nz_idx)] <- Reduce(function(x, y) abind(x, y, along = 3), s$b_mxs)
+
+writeMat("GMMReg/GMMReg/gen.mat",
+         resp = s$responses,
+         covar = s$covariates)
+```
+
+```{r}
+run_matlab_script(paste0(getwd(), "/GMMReg/GMMReg/testSerious.m"))
+```
+
+Using GMMReg (matlab)
+```{r}
+result <- readMat("GMMReg/GMMReg/genresult.mat")[[1]]
+tuned <- readMat("GMMReg/GMMReg/tunedlambda.mat")$tune
+tunedlambda <- tuned[,1]
+tunedalpha <- tuned[,2]
+resultlist <- apply(result, 3, function(t) t, simplify = F)
+
+print(paste("TPR:", true_pos_rate(resultlist, s$b_mxs, qe)))
+print(paste("FPR:", round(1-true_neg_rate(resultlist, s$b_mxs, qe), 3)))
+```
+
+Using sparsegl
+```{r}
+sgl_result <- cggr_sgl(s$responses, s$covariates, 0.75, reparametrize = F)
+print(paste("TPR:", true_pos_rate(sgl_result$beta_mxs, s$b_mxs, qe)))
+print(paste("FPR:", round(1-true_neg_rate(sgl_result$beta_mxs, s$b_mxs, qe), 3)))
+```
+
+
+### Compare sparsegl component matrices
+```{r compare components}
+for (i in seq_along(s$b_mxs)) {
+  cov_lbl <- paste0("component ", i - 1)
+  print(beta_viz_compare(sgl_result$beta_mxs[[i]],
+                         s$b_mxs[[i]], cov_lbl, tileborder = F))
+}
+```
+
+
+### Compare GMMReg (matlab) component matrices
+```{r compare components}
+for (i in seq_along(s$b_mxs)) {
+  cov_lbl <- paste0("component ", i - 1)
+  print(beta_viz_compare(resultlist[[i]],
+                         s$b_mxs[[i]], cov_lbl, tileborder = F))
+}
+```

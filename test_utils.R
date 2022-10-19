@@ -23,19 +23,24 @@ gamma_viz_compare <- function(computed, actual) {
   computed_plot + actual_plot
 }
 
-beta_viz <- function(beta_mx, title = "", limits = NULL, guides = T) {
+beta_viz <- function(beta_mx, title = "", limits = NULL, guides = T,
+                     tileborder = T, fill_legend = T) {
+  d <- nrow(beta_mx)
   beta0 <- as_tibble(cbind(expand.grid(rev(seq_len(d)), seq_len(d)),
                            c(beta_mx))) |>
            setNames(c("row", "col", "value"))
 
-  tilecolor <- ifelse(guides, "gray30", "white")
+  tilecolor <- ifelse(tileborder, "gray30", "white")
   p <- ggplot(beta0, mapping = aes(x = col, y = row, fill = value)) +
         geom_tile(color = tilecolor) +
         scale_fill_gradient2(limits = limits) +
         coord_fixed() +
         labs(title = title) +
         theme_minimal()
-  if (!guides) {
+  if (!fill_legend) {
+    p <- p + guides(fill = "none")
+  }
+  else if (!guides) {
     p <- p + guides(x = "none", y = "none", fill = "none") +
           labs(x = NULL, y = NULL)
   }
@@ -43,12 +48,18 @@ beta_viz <- function(beta_mx, title = "", limits = NULL, guides = T) {
   return(p)
 }
 
-beta_viz_compare <- function(computed, actual, cov_lbl) {
+beta_viz_compare <- function(computed, actual, cov_lbl, guides = T,
+                             tileborder = T) {
   lim <- max(abs(c(as.numeric(computed), as.numeric(actual))))
   comp <- beta_viz(computed, title = paste("Computed", cov_lbl),
-                   limits = c(-lim, lim))
+                   limits = c(-lim, lim),
+                   guides = guides,
+                   tileborder = tileborder,
+                   fill_legend = F)
   act <- beta_viz(actual, title = paste("Actual", cov_lbl),
-                  limits = c(-lim, lim))
+                  limits = c(-lim, lim),
+                  guides = guides,
+                  tileborder = tileborder)
   comp + act
 }
 
@@ -78,10 +89,10 @@ cv_result_plot <- function(cv_result, guides = T) {
 }
 
 #' @return true rate of zero coefficients excluding diagonals
-true_neg_rate <- function(est_beta_mx, true_beta_mx, true_cov_nz_idx) {
+true_neg_rate <- function(est_beta_mx, true_beta_mx, qe) {
   stopifnot(is.list(est_beta_mx),
             is.list(true_beta_mx),
-            length(true_cov_nz_idx) + 1 == length(true_beta_mx))
+            qe + 1 == length(true_beta_mx))
 
   # Counts the number of entries that are simultaneously zero in both a and b,
   # excluding diagonal entries. If b is NULL, counts the number of off-diag
@@ -97,7 +108,7 @@ true_neg_rate <- function(est_beta_mx, true_beta_mx, true_cov_nz_idx) {
   }
 
   # Index of non-zero groups, including the population group (hence + 1)
-  true_nz_groups <- c(1, 1 + true_cov_nz_idx)
+  true_nz_groups <- seq_len(qe+1)
   matching_nz_groups <- map2(est_beta_mx[true_nz_groups], true_beta_mx,
                          ~off_diag_zero(.x, .y)) |>
                     unlist() |> sum()
@@ -107,17 +118,17 @@ true_neg_rate <- function(est_beta_mx, true_beta_mx, true_cov_nz_idx) {
 
   d <- nrow(true_beta_mx[[1]])
   true_zero <- sum(unlist(map(true_beta_mx, ~off_diag_zero(.x)))) +
-    (length(est_beta_mx) - 1 - length(true_cov_nz_idx)) * (d^2 - d)
+    (length(est_beta_mx) - 1 - qe) * (d^2 - d)
 
   result <- true_test_zero / true_zero
   return(round(result, 4))
 }
 
 #' @return true rate of non-zero coefficients excluding diagonals
-true_pos_rate <- function(est_beta_mx, true_beta_mx, true_cov_nz_idx) {
+true_pos_rate <- function(est_beta_mx, true_beta_mx, qe) {
   stopifnot(is.list(est_beta_mx),
             is.list(true_beta_mx),
-            length(true_cov_nz_idx) + 1 == length(true_beta_mx))
+            qe + 1 == length(true_beta_mx))
 
   # Counts the number of entries that are simultaneously nonzero in both a and b,
   # excluding diagonal entries. If b is NULL, counts the number of off-diag
@@ -133,7 +144,7 @@ true_pos_rate <- function(est_beta_mx, true_beta_mx, true_cov_nz_idx) {
   }
 
   # Index of non-zero groups, including the population group (hence + 1)
-  true_nz_groups <- c(1, 1 + true_cov_nz_idx)
+  true_nz_groups <- seq_len(qe + 1)
   matching_nz_groups <- map2(est_beta_mx[true_nz_groups], true_beta_mx,
                              ~off_diag_nonzero(.x, .y)) |>
     unlist() |> sum()

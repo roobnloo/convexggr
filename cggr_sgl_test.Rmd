@@ -18,7 +18,7 @@ set.seed(103)
 d <- 25 
 p <- 50
 n <- 200
-s <- generate_data(n, d, p, ve = 0.01, sg = 0, reparametrize = F)
+s <- generate_data(n, d, p, ve = 0.01, reparametrize = T)
 ```
 
 ```{r}

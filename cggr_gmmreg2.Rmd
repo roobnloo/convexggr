@@ -1,6 +1,5 @@
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-source("generate_data.R")
 source("data_generation.R")
 source("cggr_sgl.R")
 source("test_utils.R")
@@ -11,18 +10,19 @@ library(abind)
 ```
 
 ```{r}
-set.seed(100)
+set.seed(101)
 d <- 25 
 p <- 50
 n <- 200
 qe <- 5
 load("tB.RData")
-s <- generate_data(n, d, p, tB)
+s <- data_generate(n, d, p, tB)
 truebetalist <- apply(tB, 3, function(t) t, simplify = F)
+U <- scale(s$U)
 
 writeMat("GMMReg/GMMReg/gen.mat",
          resp = s$X,
-         covar = s$U)
+         covar = U)
 ```
 
 ```{r}

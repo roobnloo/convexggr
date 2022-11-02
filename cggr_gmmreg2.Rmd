@@ -14,15 +14,11 @@ set.seed(101)
 d <- 25 
 p <- 50
 n <- 200
-qe <- 5
 load("tB.RData")
 s <- data_generate(n, d, p, tB)
-truebetalist <- apply(tB, 3, function(t) t, simplify = F)
-U <- scale(s$U)
+tBlist <- apply(tB, 3, function(t) t, simplify = F)
 
-writeMat("GMMReg/GMMReg/gen.mat",
-         resp = s$X,
-         covar = U)
+writeMat("GMMReg/GMMReg/gen.mat", resp = s$X, covar = s$U)
 ```
 
 ```{r}
@@ -49,8 +45,8 @@ print(paste("FPR:", fpr))
 Using sparsegl
 ```{r}
 sgl_result <- cggr_sgl(s$X, s$U, 0.75, reparametrize = F)
-print(paste("TPR:", true_pos_rate(sgl_result$beta_mxs, truebetalist[1:(qe+1)], qe)))
-print(paste("FPR:", round(1-true_neg_rate(sgl_result$beta_mxs, truebetalist[1:(qe+1)], qe), 3)))
+print(paste("TPR:", true_pos_rate(sgl_result$beta_mxs, tBlist[1:(qe+1)], qe)))
+print(paste("FPR:", round(1-true_neg_rate(sgl_result$beta_mxs, tBlist[1:(qe+1)], qe), 3)))
 ```
 
 
@@ -60,7 +56,7 @@ compute_idx <- c(1, 1 + s$cov_nz_idx)
 for (i in seq_len(qe+1)) {
   cov_lbl <- paste0("component ", compute_idx[i] - 1)
   print(beta_viz_compare(sgl_result$beta_mxs[[i]],
-                         truebetalist[[i]], cov_lbl, tileborder = F))
+                         tBlist[[i]], cov_lbl, tileborder = F))
 }
 ```
 

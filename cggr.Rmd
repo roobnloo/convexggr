@@ -1,0 +1,31 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("data_generation.R")
+source("cggr.R")
+source("test_utils.R")
+```
+
+# Generate Data
+```{r}
+set.seed(100)
+n <- 200
+p <- 10
+q <- 20
+dim <- (p - 1) * (q + 1)
+# load("data/tB.RData")
+tB <- generate_tb(p, q)
+s <- data_generate(n, p, q, tB)
+```
+
+# Run
+```{r}
+result <- cggr(s$X, s$U, asparse = 0.75)
+```
+
+### Compare sparsegl component matrices
+```{r compare components}
+for (i in seq_len(p + 1)) {
+  cov_lbl <- paste0("component ", i)
+  print(beta_viz_compare(result$bhat[,,i], tB[,,i], cov_lbl, tileborder = T))
+}
+```

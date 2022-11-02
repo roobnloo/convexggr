@@ -1,6 +1,6 @@
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-source("generate_data.R")
+source("data_generation.R")
 source("cggr_sgl.R")
 source("test_utils.R")
 library(rTensor)

@@ -3,12 +3,17 @@ library(igraph)
 
 data_generate <- function(n, p, q, tB) {
   pd_test <- 0
-  try <- 1
+  try <- 0
   while (pd_test == 0) {
     output <- X_simulate(n, p, q, tB)
     pd_test <- min(output[[4]])
     #  if this value is greater than 0, it means all covariances are PD
     print(pd_test)
+
+    if (try == 10) {
+      print(paste("Failed after", try, "tries"))
+      return()
+    }
     try <- try + 1
   }
   print(paste("Completed after", try, "tries."))
@@ -81,4 +86,6 @@ generate_tb <- function(p, q) {
   for (j in 1:(q + 1)) {
     tB[, , j] <- (tB_temp[, , j] + t(tB_temp[, , j])) / 2
   }
+
+  return(tB)
 }

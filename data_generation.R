@@ -1,11 +1,11 @@
 library(MASS)
 library(igraph)
 
-data_generate <- function(n, p, q, tB) {
+data_generate <- function(n, p, q, tB, mG, reparam = T) {
   pd_test <- 0
   try <- 0
   while (pd_test == 0) {
-    output <- X_simulate(n, p, q, tB)
+    output <- X_simulate(n, p, q, tB, mG, reparam = T)
     pd_test <- min(output[[4]])
     #  if this value is greater than 0, it means all covariances are PD
     print(pd_test)
@@ -20,7 +20,7 @@ data_generate <- function(n, p, q, tB) {
   return(output)
 }
 
-X_simulate <- function(n, p, q, tB) {
+X_simulate <- function(n, p, q, tB, mG, reparam = T) {
   U <- matrix(sample(c(0, 1), n * q, replace = TRUE), n, q)
   U2 <- matrix(runif(n * q), n, q)
   cind <- sample(1:q, q / 2, replace = F)
@@ -28,27 +28,32 @@ X_simulate <- function(n, p, q, tB) {
   U <- apply(U, 2, scale)
   iU <- cbind(rep(1, n), U)
   X <- matrix(0, n, p)
+
   for (i in 1:n) {
-    omega <- -apply(tB, c(1, 2), function(b) {
-      b %*% iU[i, ]
-    })
+    omega <- -apply(tB, c(1, 2), \(b) b %*% iU[i, ])
     diag(omega) <- 1
     sigma <- solve(omega)
     if (!all(eigen(omega)$values > 0)) { # break if omega(u) is not PD
       break
     }
     if (all(eigen(omega)$values > 0)) {
-      X[i, ] <- mvrnorm(1, rep(0, p), sigma)
+      mu <- mG %*% U[i,]
+      if (reparam) {
+        mu <- sigma %*% mu
+      }
+      X[i, ] <- mvrnorm(1, mu, sigma)
     }
   }
-  return(list("X" = X, "U" = U, tB, apply(abs(X), 1, sum)))
+  return(list("X" = X, "U" = U,  mG, tB, apply(abs(X), 1, sum)))
 }
 
-#############################################################################
-##### this is the code used to generate the precision coefficients tB #######
-#############################################################################
+generate_mg <- function(p, q, sg = p * q * 0.1) {
+  G <- matrix(0, nrow = p, ncol = q)
+  G[sample(seq_along(G), sg)] <- 0.25
+  return(G)
+}
 
-generate_tb <- function(p, q) {
+generate_tb <- function(p, q, ve = 0.01) {
   tB <- array(0, dim = c(p, p, q + 1)) #+1 for intercept
   l <- 0.35
   u <- 0.5
@@ -67,7 +72,7 @@ generate_tb <- function(p, q) {
   tB[, , 1] <- tb + t(tb)
 
   for (j in 2:6) {
-    g2 <- sample_gnp(p, 0.01, directed = FALSE, loops = FALSE) # random network
+    g2 <- sample_gnp(p, ve, directed = FALSE, loops = FALSE) # random network
     A <- get.adjacency(g2, sparse = F)
     rind <- sample(1:p, p, replace = FALSE)
     A <- A[rind, rind]

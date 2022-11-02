@@ -3,6 +3,8 @@ library(ggplot2)
 library(patchwork)
 
 gamma_viz <- function(gamma_mx, title = "", limits = NULL) {
+  d <- nrow(gamma_mx)
+  p <- ncol(gamma_mx)
   gamma_tbl <- as_tibble(cbind(expand.grid(rev(seq_len(d)), seq_len(p)),
                                c(gamma_mx))) |>
                setNames(c("row", "col", "value"))

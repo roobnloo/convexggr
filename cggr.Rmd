@@ -13,13 +13,18 @@ p <- 10
 q <- 20
 dim <- (p - 1) * (q + 1)
 # load("data/tB.RData")
-tB <- generate_tb(p, q)
-s <- data_generate(n, p, q, tB)
+mG <- generate_mg(p, q)
+tB <- generate_tb(p, q, 0.02)
+s <- data_generate(n, p, q, tB, mG)
 ```
 
 # Run
 ```{r}
 result <- cggr(s$X, s$U, asparse = 0.75)
+```
+
+```{r}
+print(gamma_viz_compare(result$ghat, mG))
 ```
 
 ### Compare sparsegl component matrices
@@ -29,3 +34,11 @@ for (i in seq_len(p + 1)) {
   print(beta_viz_compare(result$bhat[,,i], tB[,,i], cov_lbl, tileborder = T))
 }
 ```
+
+```{r}
+tpr <- sum(result$bhat != 0 & tB != 0) / sum(tB != 0)
+fpr <- sum(result$bhat != 0 & tB == 0) / sum(tB == 0)
+print(paste("TPR:", tpr))
+print(paste("FPR:", fpr))
+```
+

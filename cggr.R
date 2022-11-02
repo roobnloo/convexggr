@@ -1,7 +1,6 @@
 library(sparsegl)
 library(abind)
 source("cv_cggr_node.R")
-source("utils.R")
 
 #' @param X n x d matrix of responses
 #' @param U n x p matrix of covariates
@@ -46,30 +45,10 @@ cggr <- function(X, U, asparse, regmean = 0.01, nlambda = 100) {
     varhat[node] <- rss  / (n - num_nz)
 
     bhat_tens[node, -node,] <- result$beta
-#
-#     # Index the columns of each beta matrix to fill.
-#     # Diagonals are set to zero.
-#     beta_mx_idx <- seq_len(d)[-node]
-#     for (h in seq_len(p + 1)) {
-#       diag(beta_mxs[[h]])[node] <- 0
-#       bh_idx <- (h - 1) * (d - 1) + seq_len(d - 1)
-#
-#       if (reparametrize) {
-#         beta_mxs[[h]][node, beta_mx_idx] <- result$beta[bh_idx]
-#       } else {
-#         beta_mxs[[h]][node, beta_mx_idx] <- -result$beta[bh_idx] / varhat[node]
-#       }
-#     }
-
     ghat_mx[node,] <- result$gamma
   }
 
   bhat_symm <- abind(apply(bhat_tens, 3, symmetrize, simplify = F), along = 3)
-  # symmed_beta_mxs <-  map(seq_len(p + 1), ~ matrix(nrow = d, ncol = d))
-  # for (h in seq_len(p + 1)) {
-  #   symmed_beta_mxs[[h]] <- symmetrize(beta_mxs[[h]])
-  # }
-
   return(list(ghat = ghat_mx,
               bhat = bhat_symm,
               bhat_asym = bhat_tens,

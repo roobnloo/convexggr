@@ -1,4 +1,5 @@
 library(sparsegl)
+source("utils.R")
 
 cv_cggr_node <- function(node, X, U, asparse, regmean,
                          nlambda = 100, lambda_factor = 1e-4, nfolds = 5,

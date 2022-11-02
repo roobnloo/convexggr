@@ -53,7 +53,7 @@ generate_mg <- function(p, q, sg = p * q * 0.1) {
   return(G)
 }
 
-generate_tb <- function(p, q, ve = 0.01) {
+generate_tb <- function(p, q, ve = 0.01, nz_cov = 5) {
   tB <- array(0, dim = c(p, p, q + 1)) #+1 for intercept
   l <- 0.35
   u <- 0.5
@@ -71,7 +71,7 @@ generate_tb <- function(p, q, ve = 0.01) {
                                      sum(A) / 2, replace = F)
   tB[, , 1] <- tb + t(tb)
 
-  for (j in 2:6) {
+  for (j in seq(2, nz_cov + 1)) {
     g2 <- sample_gnp(p, ve, directed = FALSE, loops = FALSE) # random network
     A <- get.adjacency(g2, sparse = F)
     rind <- sample(1:p, p, replace = FALSE)

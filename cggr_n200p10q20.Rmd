@@ -1,0 +1,73 @@
+---
+title: "CGGR run (200, 10, 20)"
+author: "Robin Liu"
+output: html_document
+knit: (function(input, ...) {
+    rmarkdown::render(
+      input,
+      output_dir = "./output/"
+    )
+  })
+---
+```{r setup, include=FALSE}
+library(knitr)
+library(kableExtra)
+knitr::opts_chunk$set(echo = TRUE)
+source("data_generation.R")
+source("cggr.R")
+source("test_utils.R")
+```
+
+## Generate Data
+```{r, cache=T, cache.path="./cache/"}
+set.seed(100)
+n <- 200
+p <- 10
+q <- 20
+dim <- (p - 1) * (q + 1)
+mG <- generate_mg(p, q)
+tB <- generate_tb(p, q, 0.02)
+s <- data_generate(n, p, q, tB, mG)
+```
+
+## Run
+```{r run, cache=T, cache.path="./cache/"}
+result <- cggr(s$X, s$U, asparse = 0.75)
+```
+
+### Compare gamma
+```{r compare gamma, fig.dim=c(10, 3)}
+print(gamma_viz_compare(result$ghat, mG))
+```
+
+### Compare beta {.tabset}
+```{r, results="asis", echo = F, fig.dim=c(10, 5)}
+for (i in seq_len(6)) {
+  cat("\n#### comp", i - 1, "\n")
+  cov_lbl <- paste0("component ", i - 1)
+  cat("\n")
+  print(beta_viz_compare(result$bhat[,,i], tB[,,i], cov_lbl, tileborder = T))
+  cat("\n")
+}
+```
+
+## Report stats
+```{r}
+stats <- list()
+stats$tpr <- sum(result$bhat != 0 & tB != 0) / sum(tB != 0)
+stats$fpr <- sum(result$bhat != 0 & tB == 0) / sum(tB == 0)
+stats$beta_err <- sqrt(sum((tB - result$bhat)^2))
+stats$gamma_err <- sqrt(sum((mG - result$ghat)^2))
+iU <- cbind(1, s$U)
+omega_err <- 0
+for (i in 1:n) {
+  omega <- apply(tB, c(1, 2), \(b) b %*% iU[i, ])
+  omhat <- apply(result$bhat, c(1, 2), \(b) b %*% iU[i, ])
+  omega_err <- omega_err + sum((omega - omhat)^2) / n
+}
+stats$omega_err <- omega_err
+
+kable(as.data.frame(stats), digits = 3, padding = 10)  |>
+  kable_styling()
+```
+

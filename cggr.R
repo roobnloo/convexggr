@@ -4,8 +4,8 @@ source("cv_cggr_node.R")
 
 #' @param X n x d matrix of responses
 #' @param U n x p matrix of covariates
-#' @param lambda_b_seq vector of d penalties for each response
-#' @param alpha_seq values between 0 and 1 that determines sparse group lasso penalty
+#' @param regmean small ridge penalty on mean vector
+#' @param asparse SGL mixture penalty
 cggr <- function(X, U, asparse, regmean = 0.01, nlambda = 100) {
   stopifnot(is.matrix(X), is.matrix(U),
             nrow(X) == nrow(U),
@@ -44,13 +44,31 @@ cggr <- function(X, U, asparse, regmean = 0.01, nlambda = 100) {
     num_nz <- sum(abs(result$beta) > 1e-10) + sum(abs(result$gamma) > 1e-10)
     varhat[node] <- rss  / (n - num_nz)
 
-    bhat_tens[node, -node,] <- result$beta
+    bhat_tens[node, -node,] <- -result$beta / varhat[node] # Do we need a scaling factor here?
     ghat_mx[node,] <- result$gamma
   }
 
   bhat_symm <- abind(apply(bhat_tens, 3, symmetrize, simplify = F), along = 3)
+
+  # Returns the estimated precision matrix of the ith observation
+  precision <- function(i) {
+    Theta <- apply(bhat_symm, c(1, 2), \(b) b %*% c(1, U[i, ]))
+    diag(Theta) <- 1/varhat
+    # omega <- -1 * diag(1/varhat) %*% Theta
+    return(Theta)
+  }
+
+  # Returns the estimated mean vector of the ith observation
+  mean <- function(i) {
+    prec <- precision(i)
+    mu <- solve(prec) %*% diag(1/varhat) %*% ghat_mx %*% U[i, ]
+    return(mu)
+  }
+
   return(list(ghat = ghat_mx,
               bhat = bhat_symm,
               bhat_asym = bhat_tens,
-              sigma_sq = varhat))
+              varhat = varhat,
+              precision = precision,
+              mean = mean))
 }

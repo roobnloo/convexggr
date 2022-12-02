@@ -1,9 +1,10 @@
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 source("data_generation.R")
-source("cggr_sgl.R")
+source("gmmreg.R")
+source("cggr.R")
 source("test_utils.R")
-library(rTensor)
+library(kableExtra)
 library(R.matlab)
 library(matlabr)
 library(abind)
@@ -11,21 +12,84 @@ library(abind)
 
 ```{r}
 set.seed(6)
-d <- 25 
-p <- 50
+d <- 10
+p <- 20
 n <- 200
-qe <- 5
-s <- generate_data(n, d, p, ve = 0.01, sg = 0, qe = 5, reparametrize = F)
-# s$responses <- scale(s$responses)
-# beta <- array(0, dim = c(d, d, p + 1))
-# beta[,,c(1, 1 + s$cov_nz_idx)] <- Reduce(function(x, y) abind(x, y, along = 3), s$b_mxs)
-
-writeMat("GMMReg/GMMReg/gen.mat",
-         resp = s$responses,
-         covar = s$covariates)
+tB <- generate_tb(d, p, ve = 0.03)
+mG <- matrix(runif(d * p, -0.25, 0.25), d, p) #generate_mg(d, p)
+s <- data_generate(n, d, p, tB, mG, reparam = F)
 ```
 
 ```{r}
+performance <- function(result) {
+  stopifnot(all(dim(result$bhat) == dim(tB)))
+  stats <- list()
+  stats$tpr <- sum(result$bhat != 0 & tB != 0) / sum(tB != 0)
+  stats$fpr <- sum(result$bhat != 0 & tB == 0) / sum(tB == 0)
+  
+  beta_err <- 0
+  for (i in 1:d) {
+    beta_err <- beta_err + sqrt(sum((tB[i,,] - result$bhat[i,,])^2))
+  }
+  stats$beta_err <- beta_err
+
+  mean_err <- 0
+  for (i in 1:n) {
+    mean_err <- mean_err + sum((s$mumx[i, ] -  result$mean(i))^2) / n
+  }
+  stats$mean_err <- mean_err
+  
+  
+  omega_err <- 0
+  iU <- cbind(0, s$U)
+  for (i in 1:n) {
+    omega <- apply(tB, c(1, 2), \(b) b %*% iU[i, ])
+    omhat <- result$precision(i)
+    diag(omhat) <- 0
+    omega_err <- omega_err + sum((omega - omhat)^2) / n
+  }
+  stats$omega_err <- omega_err
+  
+  return(stats)
+}
+```
+
+## Run methods
+```{r}
+gmmreg_result <- gmmreg(s$X, s$U, 0.75)
+cggr_result <- cggr(s$X, s$U, asparse = 0.75)
+
+stats_gmmreg <- performance(gmmreg_result)
+stats_cggr <- performance(cggr_result)
+rbind(stats_gmmreg, stats_cggr)
+# kable(as.data.frame(stats), digits = 3, padding = 10)  |>
+#   kable_styling()
+```
+
+
+## Compare coefficient matrices
+```{r}
+for (i in seq_len(6)) {
+  cov_lbl <- as.character(i - 1)
+  beta_list <- list(GMMReg = gmmreg_result$bhat[,,i],
+                    CGGR = cggr_result$bhat[,,i],
+                    Actual = tB[,,i])
+  print(beta_viz_list(beta_list, cov_lbl, tileborder = T))
+}
+```
+
+### Compare gamma
+```{r}
+print(gamma_viz_list(list(
+  GMMReg = gmmreg_result$ghat,
+  CGGR = cggr_result$ghat,
+  Actual = mG
+)))
+```
+
+# Matlab
+```{r}
+writeMat("GMMReg/GMMReg/gen.mat", resp = s$X, covar = s$U)
 run_matlab_script(paste0(getwd(), "/GMMReg/GMMReg/testSerious.m"))
 ```
 
@@ -37,33 +101,19 @@ tunedlambda <- tuned[,1]
 tunedalpha <- tuned[,2]
 resultlist <- apply(result, 3, function(t) t, simplify = F)
 
-print(paste("TPR:", true_pos_rate(resultlist, s$b_mxs, qe)))
-print(paste("FPR:", round(1-true_neg_rate(resultlist, s$b_mxs, qe), 3)))
+stats_matlab <- list()
+stats_matlab$tpr <- sum(result != 0 & tB != 0) / sum(tB != 0)
+stats_matlab$fpr <- sum(result != 0 & tB == 0) / sum(tB == 0)
+stats_matlab$beta_err <- sqrt(sum((tB - result)^2))
+# kable(as.data.frame(stats), digits = 3, padding = 10)  |>
+#   kable_styling()
+stats_matlab
 ```
-
-Using sparsegl
-```{r}
-sgl_result <- cggr_sgl(s$responses, s$covariates, 0.75, reparametrize = F)
-print(paste("TPR:", true_pos_rate(sgl_result$beta_mxs, s$b_mxs, qe)))
-print(paste("FPR:", round(1-true_neg_rate(sgl_result$beta_mxs, s$b_mxs, qe), 3)))
-```
-
-
-### Compare sparsegl component matrices
-```{r compare components}
-for (i in seq_along(s$b_mxs)) {
-  cov_lbl <- paste0("component ", i - 1)
-  print(beta_viz_compare(sgl_result$beta_mxs[[i]],
-                         s$b_mxs[[i]], cov_lbl, tileborder = F))
-}
-```
-
 
 ### Compare GMMReg (matlab) component matrices
 ```{r compare components}
-for (i in seq_along(s$b_mxs)) {
+for (i in seq_len(6)) {
   cov_lbl <- paste0("component ", i - 1)
-  print(beta_viz_compare(resultlist[[i]],
-                         s$b_mxs[[i]], cov_lbl, tileborder = F))
+  print(beta_viz_compare(result[,,i], tB[,,i], cov_lbl, tileborder = T))
 }
 ```

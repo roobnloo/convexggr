@@ -10,7 +10,8 @@ gamma_viz <- function(gamma_mx, title = "", limits = NULL) {
                setNames(c("row", "col", "value"))
 
   ggplot(gamma_tbl, mapping = aes(x = col, y = row, fill = value)) +
-    geom_tile(color = "gray30") +
+    # geom_tile(color = "gray30") +
+    geom_tile() +
     scale_fill_gradient2(limits = limits) +
     coord_fixed() +
     labs(title = title) +
@@ -25,6 +26,21 @@ gamma_viz_compare <- function(computed, actual) {
   computed_plot + actual_plot
 }
 
+gamma_viz_list <- function(gamma_list) {
+  lim <- max(abs(unlist(gamma_list)))
+  plots <- vector(mode = "list", length = length(gamma_list))
+  for (i in seq_along(gamma_list)) {
+    plots[[i]] <- gamma_viz(gamma_list[[i]],
+                            paste(names(gamma_list)[i], "gamma"), c(-lim, lim)) +
+                  labs(x = NULL, y = NULL) +
+                  guides(x = "none", y = "none")
+    if (i != length(gamma_list)) {
+      plots[[i]] <- plots[[i]] + guides(fill = "none")
+    }
+  }
+  Reduce(`+`, plots)
+}
+
 beta_viz <- function(beta_mx, title = "", limits = NULL, guides = T,
                      tileborder = T, fill_legend = T) {
   d <- nrow(beta_mx)
@@ -34,7 +50,7 @@ beta_viz <- function(beta_mx, title = "", limits = NULL, guides = T,
 
   tilecolor <- ifelse(tileborder, "gray30", "white")
   p <- ggplot(beta0, mapping = aes(x = col, y = row, fill = value)) +
-        geom_tile(color = tilecolor) +
+        geom_tile() +
         scale_fill_gradient2(limits = limits) +
         coord_fixed() +
         labs(title = title) +
@@ -63,6 +79,25 @@ beta_viz_compare <- function(computed, actual, cov_lbl, guides = T,
                   guides = guides,
                   tileborder = tileborder)
   comp + act
+}
+
+beta_viz_list <- function(beta_list, cov_lbl, guides = T, tileborder = T) {
+  lim <- max(abs(unlist(beta_list)))
+
+  plots <- vector(mode = "list", length = length(beta_list))
+  for (i in seq_along(beta_list)) {
+    plots[[i]] <-  beta_viz(beta_list[[i]],
+                            title = paste(names(beta_list)[i], cov_lbl),
+                            limits = c(-lim, lim),
+                            tileborder = tileborder) +
+                   guides(x = "none", y = "none") +
+                   labs(x = NULL, y = NULL)
+    if (i != length(beta_list)) {
+      plots[[i]] <- plots[[i]] + guides(fill = "none")
+    }
+  }
+
+  Reduce(`+`, plots)
 }
 
 cv_result_plot <- function(cv_result, guides = T) {

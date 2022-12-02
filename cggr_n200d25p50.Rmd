@@ -1,0 +1,127 @@
+---
+title: "CGGR run (200, 10, 20)"
+author: "Robin Liu"
+output: html_document
+knit: (function(input, ...) {
+    rmarkdown::render(
+      input,
+      output_dir = "./output/"
+    )
+  })
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("data_generation.R")
+source("gmmreg.R")
+source("cggr.R")
+source("test_utils.R")
+library(kableExtra)
+```
+
+## Generate data
+```{r}
+d <- 25
+p <- 50
+n <- 200
+#tB <- generate_tb(d, p, ve = 0.012)
+load("data/tB.RData")
+mG <- matrix(runif(d * p, -0.25, 0.25), d, p) #generate_mg(d, p)
+
+generate <- function(n, d, p, tB, mG, seed) {
+  set.seed(seed)
+  s <- data_generate(n, d, p, tB, mG)
+  return(s)
+}
+```
+
+```{r, echo = F}
+performance <- function(result, s_true) {
+  stopifnot(all(dim(result$bhat) == dim(tB)))
+  stats <- list()
+  stats$tpr <- sum(result$bhat != 0 & tB != 0) / sum(tB != 0)
+  stats$fpr <- sum(result$bhat != 0 & tB == 0) / sum(tB == 0)
+  
+  beta_err <- 0
+  for (i in 1:d) {
+    beta_err <- beta_err + sqrt(sum((tB[i,,] - result$bhat[i,,])^2))
+  }
+  stats$beta_err <- beta_err
+
+  mean_err <- 0
+  for (i in 1:n) {
+    mean_err <- mean_err + sum((s_true$mumx[i, ] -  result$mean(i))^2) / n
+  }
+  stats$mean_err <- mean_err
+
+  omega_err <- 0
+  iU <- cbind(0, s_true$U)
+  for (i in 1:n) {
+    omega <- apply(tB, c(1, 2), \(b) b %*% iU[i, ])
+    omhat <- result$precision(i)
+    diag(omhat) <- 0
+    omega_err <- omega_err + sum((omega - omhat)^2) / n
+  }
+  stats$omega_err <- omega_err
+  
+  return(stats)
+}
+```
+
+## Run methods
+```{r}
+failures <- 0
+trials <- 2
+s_list <- vector(mode = "list", length = trials)
+for (i in seq_len(trials)) {
+  s <- generate(n, d, p, tB, mG, i)
+  if (is.null(s)) {
+    failures <- failures + 1
+    next
+  }
+  s_list[[i]] <- s
+}
+```
+
+```{r run, cache=T, cache.path="./cache/"}
+gmmreg_result_mx <- matrix(nrow = trials, ncol = 5)
+cggr_result_mx <- matrix(nrow = trials, ncol = 5)
+for (i in seq_along(s_list)) {
+  g_result <- gmmreg(s_list[[i]]$X, s_list[[i]]$U, 0.75)
+  gmmreg_result_mx[i,] <- unlist(performance(g_result, s_list[[i]]))
+  c_result <- cggr(s_list[[i]]$X, s_list[[i]]$U, 0.75)
+  cggr_result_mx[i,] <- unlist(performance(c_result, s_list[[i]]))
+  print(paste("Completed round", i))
+}
+```
+
+```{r}
+avg_perf <- rbind(apply(gmmreg_result_mx, 2, mean),
+                  apply(cggr_result_mx, 2, mean))
+colnames(avg_perf) <- c("TPR", "FPR", "beta_err", "mean_err", "omega_err")
+kable(avg_perf, digits = 3, padding = 10)  |>
+  kable_styling()
+```
+
+### Compare gamma
+```{r compare gamma, fig.dim=c(10, 3)}
+print(gamma_viz_list(list(
+  GMMReg = g_result$ghat,
+  CGGR = c_result$ghat,
+  Actual = s_list[[1]]$mG
+)))
+```
+
+### Compare beta {.tabset}
+```{r, results="asis", echo = F, fig.dim=c(10, 5)}
+for (i in seq_len(6)) {
+  cat("\n#### comp", i - 1, "\n")
+  cov_lbl <- paste0("component ", i - 1)
+  cat("\n")
+  beta_list <- list(GMMReg = g_result$bhat[,,i],
+                    CGGR = c_result$bhat[,,i],
+                    Actual = tB[,,i])
+  print(beta_viz_list(beta_list, cov_lbl, tileborder = T))
+  cat("\n")
+}
+```

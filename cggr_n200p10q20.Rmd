@@ -27,7 +27,7 @@ q <- 20
 dim <- (p - 1) * (q + 1)
 mG <- generate_mg(p, q)
 tB <- generate_tb(p, q, 0.02)
-s <- data_generate(n, p, q, tB, mG)
+s <- data_generate(n, p, q, tB, mG, reparam = F)
 ```
 
 ## Run

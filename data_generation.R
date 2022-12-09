@@ -1,11 +1,11 @@
 library(MASS)
 library(igraph)
 
-data_generate <- function(n, p, q, tB, mG, reparam = T) {
+data_generate <- function(n, p, q, tB, mG, reparam = F) {
   pd_test <- 0
   try <- 0
   while (pd_test == 0) {
-    output <- X_simulate(n, p, q, tB, mG, reparam = T)
+    output <- X_simulate(n, p, q, tB, mG, reparam)
     pd_test <- min(output$pd_check)
     #  if this value is greater than 0, it means all covariances are PD
     print(pd_test)
@@ -20,7 +20,7 @@ data_generate <- function(n, p, q, tB, mG, reparam = T) {
   return(output)
 }
 
-X_simulate <- function(n, p, q, tB, mG, reparam = T) {
+X_simulate <- function(n, p, q, tB, mG, reparam) {
   U <- matrix(sample(c(0, 1), n * q, replace = TRUE), n, q)
   U2 <- matrix(runif(n * q), n, q)
   cind <- sample(1:q, q / 2, replace = F)

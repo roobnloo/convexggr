@@ -1,64 +1,24 @@
-library(purrr)
-source("../utils.R")
+source("utils.R")
 
-cggr_node <- function(node, X, U, lambda, asparse, regmean,
-                      maxit = 1000, tol = 1e-5) {
-  d <- ncol(X)
-  p <- ncol(U)
-  n <- nrow(X)
-
-  stopifnot(1 <= node && node <= d,
-            is.matrix(X), is.matrix(U),
-            nrow(U) == n, length(y) == n,
-            regmean > 0, length(regmean) == 1,
-            length(asparse) == 1, asparse >= 0 && asparse <= 1,
-            length(lambda) > 0, all(lambda > 0))
-
-  result <- vector(mode = "list", length = length(lambda))
-  gamma_init <- rep(0, p)
-  beta_init <- rep(0, (p + 1) * (d - 1))
-  for (i in seq_along(result)) {
-    result[[i]] <- cggr_node_init(node, X, U, lambda[i], asparse, regmean,
-                                  beta_init, gamma_init, maxit, tol)
-
-    # Initialize with previous results (warm starts)
-    gamma_init <- result[[i]]$gamma_j
-    beta_init <- result[[i]]$beta_j
-  }
-
-  return(result)
-}
-
-apply_ridge_update <- function(gamma_j, r_j, U, lambda_g) {
-  p <- ncol(U)
-  rgamma <- r_j + U %*% gamma_j
-  gamma_j <- solve(t(U) %*% U + diag(lambda_g, p, p)) %*%
-                    t(U) %*% rgamma
-  r <- rgamma - U %*% gamma_j
-  list(v = gamma_j,
-       full_resid = r)
-}
-
-#' @param y n vector of the response to solve
-#' @param reponses n x (d-1) matrix of the other responses
-#' @param covariates n x p matrix of covariates
-#' @param lambda_g penalty scalar for the mean gamma
-#' @param lambda_b penalty scalar for components of beta
-#' @param alpha value between 0 and 1 that determines sparse group lasso penalty
-#' @param gamma_j initial gamma_j
-#' @param beta initial beta_j
-cggr_node_init <- function(node, X, U, lambda, asparse, regmean,
-                           initbeta, initgamma, maxit, tol) {
+node_strategy_custom <- function(node, X, U, lambda, asparse, regmean,
+                                 initbeta = NULL, initgamma = NULL,
+                                 maxit = 1000, tol = 1e-5) {
   d <- ncol(X)
   p <- ncol(U)
 
   stopifnot(is.matrix(X), is.matrix(U),
             nrow(X) == nrow(U),
-            length(y) == nrow(U),
             regmean > 0, lambda > 0, length(lambda) == 1)
 
   y <- scale(X[, node], scale = F)
   X <- X[, -node]
+
+  if (is.null(initbeta)) {
+    initbeta <- rep(0, (p+1)*(d-1))
+  }
+  if (is.null(initgamma)) {
+    initgamma <- rep(0, p)
+  }
   beta <- initbeta
   gamma <- initgamma
 
@@ -120,12 +80,12 @@ cggr_node_init <- function(node, X, U, lambda, asparse, regmean,
 compute_obj_value <- function(r_j, gamma_j, beta_j, p, d,
                               lambda_g, lambda_b, alpha) {
   group_lasso_term <-
-      map(seq_len(p),
-          ~ norm(beta_j[.x * (d - 1) + seq_len(d - 1)], type = "2")) |>
-      reduce(`+`)
+    map(seq_len(p),
+        ~ norm(beta_j[.x * (d - 1) + seq_len(d - 1)], type = "2")) |>
+    reduce(`+`)
 
   quad_loss(r_j) +
-    lambda_g * sum(abs(gamma_j)) +
+    lambda_g * sum(gamma_j^2) +
     alpha * lambda_b * sum(abs(beta_j)) +
     (1 - alpha) * lambda_b * group_lasso_term
 }
@@ -172,8 +132,8 @@ apply_sparsegl_update <- function(bh_j, full_resid, covariate_h, responses,
   for (l in seq_len(maxit)) {
     # TODO: clean this up
     obj_new <- compute_obj_value(grp_partial_resid - grp_intx_mx %*% bh_j_new,
-                                  0, c(rep(0, length(bh_j_new)), bh_j_new),
-                                  1, length(bh_j_new) + 1, 0, lambda, alpha)
+                                 0, c(rep(0, length(bh_j_new)), bh_j_new),
+                                 1, length(bh_j_new) + 1, 0, lambda, alpha)
     if (abs(obj_new - obj) < 1e-5) {
       break
     }
@@ -208,12 +168,12 @@ apply_sparsegl_update <- function(bh_j, full_resid, covariate_h, responses,
 }
 
 sgl_gd_update <- function(center, step_size, grad, alpha, lambda) {
-    thresh_step <- soft_threshold(center - step_size * grad,
-                                  step_size * alpha * lambda)
-    ss <- sum(thresh_step^2)
-    denom <- ifelse(ss == 0, 1, sqrt(ss))
-    max_term <- max(0, 1 - step_size * (1 - alpha) * lambda / denom)
-    return(max_term * thresh_step)
+  thresh_step <- soft_threshold(center - step_size * grad,
+                                step_size * alpha * lambda)
+  ss <- sum(thresh_step^2)
+  denom <- ifelse(ss == 0, 1, sqrt(ss))
+  max_term <- max(0, 1 - step_size * (1 - alpha) * lambda / denom)
+  return(max_term * thresh_step)
 }
 
 #' Applies the coordinate-wise update for the L1 penalty
@@ -239,4 +199,15 @@ apply_L1_update <- function(v, full_resid, design_mx, lambda) {
 soft_threshold <- function(x, lambda) {
   stopifnot(length(lambda) == 1)
   sign(x) * pmax(abs(x) - lambda, 0)
+}
+
+
+apply_ridge_update <- function(gamma_j, r_j, U, lambda_g) {
+  p <- ncol(U)
+  rgamma <- r_j + U %*% gamma_j
+  gamma_j <- solve(t(U) %*% U + diag(lambda_g, p, p)) %*%
+    t(U) %*% rgamma
+  r <- rgamma - U %*% gamma_j
+  list(v = gamma_j,
+       full_resid = r)
 }

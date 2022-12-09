@@ -6,9 +6,9 @@ cggr_node_cvxr <- function(y, responses, covariates, gamma_j, beta_j,
   p <- ncol(covariates)
   d <- ncol(responses) + 1
 
-  centered <- center_vars(responses, covariates)
-  responses <- centered$responses
-  covariates <- centered$covariates
+  # centered <- center_vars(responses, covariates)
+  # responses <- centered$responses
+  # covariates <- centered$covariates
 
   loss <- compute_loss(y, responses, covariates, gamma_j, beta_j)
 

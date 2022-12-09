@@ -1,0 +1,117 @@
+---
+title: "CGGR run (200, 10, 20)"
+author: "Robin Liu"
+output: html_document
+knit: (function(input, ...) {
+    rmarkdown::render(
+      input,
+      output_dir = "./output/"
+    )
+  })
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(kableExtra)
+knitr::opts_chunk$set(echo = TRUE)
+source("data_generation.R")
+source("cggr.R")
+source("node_strategy_sparsegl.R")
+source("node_strategy_custom.R")
+source("node_strategy_cvxr.R")
+source("test_utils.R")
+```
+
+## Generate Data
+```{r, cache=T, cache.path="./cache/"}
+set.seed(100)
+n <- 200
+p <- 10
+q <- 20
+dim <- (p - 1) * (q + 1)
+mG <- generate_mg(p, q)
+tB <- generate_tb(p, q, 0.02)
+s <- data_generate(n, p, q, tB, mG, reparam = F)
+```
+
+```{r}
+node <- 1
+tictoc::tic()
+result <- node_strategy_sparsegl(node, s$X, s$U, 0.03, 0.75, 0.01)
+tictoc::toc()
+tictoc::tic()
+result_custom <- node_strategy_custom(node, s$X, s$U, 0.03, 0.75, 0.01)
+tictoc::toc()
+```
+
+
+```{r}
+gamma_cvxr <- Variable(q)
+beta_cvxr <- Variable((q + 1) * (p - 1))
+result_cvxr <- node_strategy_cvxr(node, s$X, s$U, 0.03, 0.75, 0.01, beta_cvxr, gamma_cvxr)
+```
+
+```{r}
+mean((result_cvxr$getValue(beta_cvxr) - result$beta)^2)
+result_cvxr$value
+```
+
+
+```{r}
+result$objval
+```
+```{r}
+result_custom$objval
+```
+
+
+
+## Run
+```{r run, cache=T, cache.path="./cache/"}
+result <- cggr(s$X, s$U, asparse = 0.75, node_strategy_sparsegl)
+result_custom <- cggr(s$X, s$U, asparse = 0.75, node_strategy_custom)
+```
+
+### Compare gamma
+```{r compare gamma, fig.dim=c(10, 3)}
+print(gamma_viz_compare(result$ghat, mG))
+print(gamma_viz_compare(result_custom$ghat, mG))
+```
+
+### Compare beta {.tabset}
+```{r, results="asis", echo = F, fig.dim=c(10, 5)}
+for (i in seq_len(6)) {
+  cat("\n#### comp", i - 1, "\n")
+  cov_lbl <- paste0("component ", i - 1)
+  cat("\n")
+  blist <- list(result_custom$bhat[,,i], result$bhat[,,i], tB[,,i])
+  names(blist) <- c("custom", "sparsegl", "true")
+  print(beta_viz_list(blist, cov_lbl, tileborder = T))
+  cat("\n")
+}
+```
+
+## Report stats
+```{r}
+get_stats <- function(res) {
+  stats <- list()
+  stats$tpr <- sum(res$bhat != 0 & tB != 0) / sum(tB != 0)
+  stats$fpr <- sum(res$bhat != 0 & tB == 0) / sum(tB == 0)
+  stats$beta_err <- sqrt(sum((tB - res$bhat)^2))
+  stats$gamma_err <- sqrt(sum((mG - res$ghat)^2))
+  iU <- cbind(1, s$U)
+  omega_err <- 0
+  for (i in 1:n) {
+    omega <- apply(tB, c(1, 2), \(b) b %*% iU[i, ])
+    omhat <- apply(res$bhat, c(1, 2), \(b) b %*% iU[i, ])
+    omega_err <- omega_err + sum((omega - omhat)^2) / n
+  }
+  stats$omega_err <- omega_err
+  
+  return(stats)
+}
+df <- as.data.frame(rbind(get_stats(result), get_stats(result_custom)),
+                    row.names = c("sparsegl", "custom"))
+kable(df, digits = 3, padding = 10)  |>
+  kable_styling()
+```

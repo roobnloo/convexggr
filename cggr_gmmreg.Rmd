@@ -17,7 +17,12 @@ p <- 20
 n <- 200
 tB <- generate_tb(d, p, ve = 0.03)
 mG <- matrix(runif(d * p, -0.25, 0.25), d, p) #generate_mg(d, p)
-s <- data_generate(n, d, p, tB, mG, reparam = F)
+
+generate <- function(n, d, p, tB, mG, seed) {
+  set.seed(seed)
+  s <- data_generate(n, d, p, tB, mG, reparam = F)
+  return(s)
+}
 ```
 
 ```{r}
@@ -56,14 +61,41 @@ performance <- function(result) {
 
 ## Run methods
 ```{r}
-gmmreg_result <- gmmreg(s$X, s$U, 0.75)
-cggr_result <- cggr(s$X, s$U, asparse = 0.75)
+trials <- 5
+s_list = vector("list", length = 5)
+for (i in seq_along(s_list)) {
+  s_list[[i]] <- generate(n, d, p, tB, mG, seed = i)
+}
+```
 
-stats_gmmreg <- performance(gmmreg_result)
-stats_cggr <- performance(cggr_result)
-rbind(stats_gmmreg, stats_cggr)
+
+```{r}
+gmmreg_results <- vector("list", length = trials)
+cggr_results <- vector("list", length = trials)
+for (i in seq_along(s_list)) {
+  g_result <- gmmreg(s$X, s$U, 0.75)
+  c_result <- cggr(s$X, s$U, 0.75)
+  gmmreg_results[[i]] <- g_result
+  cggr_results[[i]] <- c_result
+}  
+
+gmmreg_stats <- matrix(nrow = trials, ncol = 5)
+cggr_stats <- matrix(nrow = trials, ncol = 5)
+for (i in seq_len(trials)) {
+  gmmreg_stats[i,] <- unlist(performance(gmmreg_results[[i]]))
+  cggr_stats[i,] <- unlist(performance(cggr_results[[i]]))
+}
+# 
+# stats_gmmreg <- performance(gmmreg_result)
+# stats_cggr <- performance(cggr_result)
+# rbind(stats_gmmreg, stats_cggr)
 # kable(as.data.frame(stats), digits = 3, padding = 10)  |>
 #   kable_styling()
+```
+
+```{r}
+gmmreg_stats
+cggr_stats
 ```
 
 
@@ -71,8 +103,8 @@ rbind(stats_gmmreg, stats_cggr)
 ```{r}
 for (i in seq_len(6)) {
   cov_lbl <- as.character(i - 1)
-  beta_list <- list(GMMReg = gmmreg_result$bhat[,,i],
-                    CGGR = cggr_result$bhat[,,i],
+  beta_list <- list(GMMReg = gmmreg_results[[1]]$bhat[,,i],
+                    CGGR = cggr_results[[1]]$bhat[,,i],
                     Actual = tB[,,i])
   print(beta_viz_list(beta_list, cov_lbl, tileborder = T))
 }
@@ -81,8 +113,8 @@ for (i in seq_len(6)) {
 ### Compare gamma
 ```{r}
 print(gamma_viz_list(list(
-  GMMReg = gmmreg_result$ghat,
-  CGGR = cggr_result$ghat,
+  GMMReg = gmmreg_results[[1]]$ghat,
+  CGGR = cggr_results[[1]]$ghat,
   Actual = mG
 )))
 ```

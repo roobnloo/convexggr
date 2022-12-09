@@ -7,7 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-source("generate_data.R")
+source("../data_generation.R")
 source("cv_cggr.R")
 source("cvxr_node.R")
 ```
@@ -17,19 +17,24 @@ set.seed(100)
 d <- 5
 p <- 10
 num <- 200
-alpha <- 0.05 # 1 => lasso, 0 => group lasso
-s <- generate_data(num, d, p, ve = 0.3)
-node <- 3
-y <- s$responses[, node]
-trials <- 10
+alpha <- 0.75 # 1 => lasso, 0 => group lasso
+tB <- generate_tb(d, p, ve = 0.3)
+mG <- generate_mg(d, p)
+s <- data_generate(num, d, p, tB, mG)
+node <- 1
+y <- s$X[, node]
+y <- scale(y, scale = F)
 ```
 
 
 ```{r determine_lambda}
-centered <- center_vars(s$responses[, -node], s$covariates)
-lambda_max <- min_lambda_zero(y, centered$responses, centered$covariates, alpha)
-lambda_vals <- rev(10^seq(log10(0.01 * lambda_max),
-                         log10(lambda_max), length = trials))
+# centered <- center_vars(s$responses[, -node], s$covariates)
+# lambda_max <- min_lambda_zero(y, centered$responses, centered$covariates, alpha)
+W <- cbind(s$X[, -node], interaction_mx(s$X[, -node], s$U))
+lambda_factor <- 1e-4
+nlambda <- 20
+lambda_max <- min_lambda_zero(y, s$X[, -node], s$U, alpha)
+lambda_vals <- lambda_max * exp(seq(log(1), log(lambda_factor), length = nlambda))
 ```
 
 ```{r}
@@ -42,10 +47,10 @@ beta_vals <-  matrix(NA, nrow = length(lambda_vals), ncol = (p + 1) * (d - 1))
 opt_vals <- vector(length = length(lambda_vals))
 
 for(i in seq_along(lambda_vals)) {
-  cvxr_result <- cggr_node_cvxr(s$responses[, node], s$responses[, -node],
-                                 s$covariates, gamma_j, beta_j,
-                                 lambda_g = 0.03, lambda_b = lambda_vals[i],
-                                 alpha = alpha)
+  cvxr_result <- cggr_node_cvxr(y, s$X[, -node],
+                                s$U, gamma_j, beta_j,
+                                lambda_g = 0.03, lambda_b = lambda_vals[i],
+                                alpha = alpha)
   gamma_vals[i, ] <- cvxr_result$getValue(gamma_j)
   beta_vals[i, ] <- cvxr_result$getValue(beta_j)
   opt_vals[i] <- cvxr_result$value
@@ -54,10 +59,8 @@ for(i in seq_along(lambda_vals)) {
 
 
 ```{r}
-cggr_result <- cggr_node(s$responses[, node],
-                         s$responses[, -node], s$covariates,
-                         lambda_g = 0.03, lambda_b_seq = lambda_vals,
-                         alpha = alpha)
+cggr_result <- cggr_node(node, s$X, s$U, lambda = lambda_vals,
+                         regmean = 0.03, asparse = alpha)
 
 my_gamma_vals <- map(cggr_result, ~ .x$gamma_j) |> reduce(cbind)
 my_beta_vals <- map(cggr_result, ~ .x$beta_j) |> reduce(rbind)

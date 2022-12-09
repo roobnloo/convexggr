@@ -1,15 +1,21 @@
 library(sparsegl)
 library(abind)
 source("cv_cggr_node.R")
+source("node_strategy_sparsegl.R")
 
 #' @param X n x d matrix of responses
 #' @param U n x p matrix of covariates
 #' @param regmean small ridge penalty on mean vector
 #' @param asparse SGL mixture penalty
-cggr <- function(X, U, asparse, regmean = 0.01, nlambda = 100) {
+cggr <- function(X, U, asparse, nodereg_strat = NULL,
+                 regmean = 0.01, nlambda = 100) {
   stopifnot(is.matrix(X), is.matrix(U),
             nrow(X) == nrow(U),
             regmean > 0)
+
+  if (is.null(nodereg_strat)) {
+    nodereg_strat = node_strategy_sparsegl
+  }
 
   d <- ncol(X)
   p <- ncol(U)
@@ -19,7 +25,8 @@ cggr <- function(X, U, asparse, regmean = 0.01, nlambda = 100) {
   lambda <- matrix(nrow = d, ncol = nlambda)
   lambda_min <- vector(length = d)
   for (node in seq_len(d)) {
-    result <- cv_cggr_node(node, X, U, asparse, regmean, nlambda = nlambda)
+    result <- cv_cggr_node(node, X, U, asparse, regmean, nodereg_strat,
+                           nlambda = nlambda)
     lambda[node,] <- result$lambda
     lambda_min[node] <- result$lambda_min
   }
@@ -39,12 +46,12 @@ cggr <- function(X, U, asparse, regmean = 0.01, nlambda = 100) {
   varhat <- vector(length = d)
 
   for (node in seq_len(d)) {
-    result <- cggr_node(node, X, U, lambda_min[node], asparse, regmean)
+    result <- nodereg_strat(node, X, U, lambda_min[node], asparse, regmean)
     rss <- sum(result$resid^2)
     num_nz <- sum(abs(result$beta) > 1e-10) + sum(abs(result$gamma) > 1e-10)
     varhat[node] <- rss  / (n - num_nz)
 
-    bhat_tens[node, -node,] <- -result$beta / varhat[node] # Do we need a scaling factor here?
+    bhat_tens[node, -node,] <- -result$beta / varhat[node] # Do we need a scaling factor here? I think so.
     ghat_mx[node,] <- result$gamma
   }
 

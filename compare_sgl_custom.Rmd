@@ -13,6 +13,7 @@ knit: (function(input, ...) {
 ```{r setup, include=FALSE}
 library(knitr)
 library(kableExtra)
+library(Rcpp)
 knitr::opts_chunk$set(echo = TRUE)
 source("data_generation.R")
 source("cggr.R")
@@ -20,14 +21,15 @@ source("node_strategy_sparsegl.R")
 source("node_strategy_custom.R")
 source("node_strategy_cvxr.R")
 source("test_utils.R")
+sourceCpp("node_strategy.cpp")
 ```
 
 ## Generate Data
-```{r, cache=T, cache.path="./cache/"}
+```{r}
 set.seed(100)
 n <- 200
-p <- 10
-q <- 20
+p <- 25
+q <- 50
 dim <- (p - 1) * (q + 1)
 mG <- generate_mg(p, q)
 tB <- generate_tb(p, q, 0.02)
@@ -35,24 +37,64 @@ s <- data_generate(n, p, q, tB, mG, reparam = F)
 ```
 
 ```{r}
+initbeta <- rep(0, (p - 1) * (q + 1))
+initgamma <- rep(0, q)
+resid <- compute_residual(s$X[, 1], s$X[, -1], s$U, initgamma, initbeta)
+```
+
+```{r}
+gamup <- applyRidgeUpdate(initgamma, resid, s$U, 0.01)
+c1 <- apply_ridge_update(initgamma, resid, s$U, 0.01)
+c1$full_resid
+
+l1cpp <- applyL1Update(initbeta[1:(p - 1)], c1$full_resid, s$X[, -1], 0.03)
+l1r <- apply_L1_update(initbeta[1:(p - 1)], c1$full_resid, s$X[, -1], 0.03)
+
+```
+
+```{r}
+
+sglcpp <- applySparseGLUpdate(
+    initbeta[1:(p - 1)], l1r$full_resid, s$U[, 1], s$X[, -1], 0.03,
+    0.75, 1000, 1e-5)
+sglr <- apply_sparsegl_update(
+    initbeta[1:(p - 1)], l1r$full_resid, s$U[, 1], s$X[, -1], 0.03,
+    0.75, 1000, 1e-5)
+```
+
+```{r}
 node <- 1
 tictoc::tic()
-result <- node_strategy_sparsegl(node, s$X, s$U, 0.03, 0.75, 0.01)
-tictoc::toc()
-tictoc::tic()
-result_custom <- node_strategy_custom(node, s$X, s$U, 0.03, 0.75, 0.01)
+result <- node_strategy_sparsegl(node, s$X, s$U, 0.03, 0.75, 0.01, tol = 1e-6)
 tictoc::toc()
 ```
 
+```{r}
+tictoc::tic()
+result_nodewise <- nodewiseRegression(
+    s$X[, 1], s$X[, -1], s$U,
+    0.03, 0.75, 0.01,
+    rep(0, (p - 1) * (q + 1)), rep(0, q),
+    tol = 1e-6)
+tictoc::toc()
+```
+
+```{r}
+node <- 1
+tictoc::tic()
+result_custom <- node_strategy_custom(node, s$X, s$U, 0.03, 0.75, 0.01, tol = 1e-6)
+tictoc::toc()
+```
 
 ```{r}
 gamma_cvxr <- Variable(q)
 beta_cvxr <- Variable((q + 1) * (p - 1))
-result_cvxr <- node_strategy_cvxr(node, s$X, s$U, 0.03, 0.75, 0.01, beta_cvxr, gamma_cvxr)
+result_cvxr <- node_strategy_cvxr(node, s$X, s$U, 0.03, 0.75, 0.01, beta_cvxr, gamma_cvxr, tol = 1e-6)
 ```
 
 ```{r}
-mean((result_cvxr$getValue(beta_cvxr) - result$beta)^2)
+mean((result_cvxr$getValue(beta_cvxr) - result_custom$beta)^2)
+mean((result$beta - result_custom$beta)^2)
 result_cvxr$value
 ```
 

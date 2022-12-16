@@ -9,3 +9,5 @@ GMMReg/
 GMMReg.zip
 InputStreamByteWrapper.class
 MatlabServer.m
+.vscode/
+.editorconfig

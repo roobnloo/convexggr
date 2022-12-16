@@ -40,9 +40,8 @@ node_strategy_custom <- function(node, X, U, lambda, asparse, regmean,
 
     for (h in seq_len(p)) {
       bh_idx <- h * (d - 1) + seq_len(d - 1)
-      result_bh <- apply_sparsegl_update(beta[bh_idx],
-                                         r_j, U[, h], X,
-                                         lambda, asparse)
+      result_bh <- apply_sparsegl_update(beta[bh_idx], r_j, U[, h], X,
+                                         lambda, asparse, maxit, tol)
       beta[bh_idx] <- result_bh$bh_j
 
       ## The code below applies only the LASSO to the groups in beta.
@@ -109,7 +108,7 @@ est_var <- function(r_j, gamma_j, beta_j) {
 #' @returns updated coefficient vector and residual vector
 #' TODO: Most of this function ought to be implemented in C++.
 apply_sparsegl_update <- function(bh_j, full_resid, covariate_h, responses,
-                                  lambda, alpha) {
+                                  lambda, alpha, maxit, tol) {
   stopifnot(length(full_resid) == nrow(responses),
             length(full_resid) == length(covariate_h))
 
@@ -127,14 +126,13 @@ apply_sparsegl_update <- function(bh_j, full_resid, covariate_h, responses,
   step_size <- 1
   bh_j_new <- bh_j
   theta_new <- bh_j
-  maxit <- 100
   obj <- Inf
   for (l in seq_len(maxit)) {
     # TODO: clean this up
     obj_new <- compute_obj_value(grp_partial_resid - grp_intx_mx %*% bh_j_new,
                                  0, c(rep(0, length(bh_j_new)), bh_j_new),
                                  1, length(bh_j_new) + 1, 0, lambda, alpha)
-    if (abs(obj_new - obj) < 1e-5) {
+    if (abs(obj_new - obj) < tol) {
       break
     }
     if (l == maxit) {
@@ -205,8 +203,7 @@ soft_threshold <- function(x, lambda) {
 apply_ridge_update <- function(gamma_j, r_j, U, lambda_g) {
   p <- ncol(U)
   rgamma <- r_j + U %*% gamma_j
-  gamma_j <- solve(t(U) %*% U + diag(lambda_g, p, p)) %*%
-    t(U) %*% rgamma
+  gamma_j <- solve(t(U) %*% U + diag(lambda_g, p, p), t(U) %*% rgamma)
   r <- rgamma - U %*% gamma_j
   list(v = gamma_j,
        full_resid = r)

@@ -1,4 +1,5 @@
 source("utils.R")
+library(sparsegl)
 
 node_strategy_sparsegl <- function(node, X, U, lambda, asparse, regmean,
                                    initbeta = NULL, initgamma = NULL,
@@ -52,7 +53,7 @@ node_strategy_sparsegl <- function(node, X, U, lambda, asparse, regmean,
 
     # ridge step
     rgamma <- r + U %*% gamma
-    gamma <- solve(t(U) %*% U + diag(regmean, p, p)) %*% t(U) %*% rgamma
+    gamma <- solve(t(U) %*% U + diag(regmean, p, p), t(U) %*% rgamma)
     r <- rgamma - U %*% gamma
   }
 

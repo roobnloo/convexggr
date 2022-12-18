@@ -21,7 +21,7 @@ source("node_strategy_sparsegl.R")
 source("node_strategy_custom.R")
 source("node_strategy_cvxr.R")
 source("test_utils.R")
-sourceCpp("node_strategy.cpp")
+sourceCpp("nodewise_regression.cpp")
 ```
 
 ## Generate Data
@@ -32,51 +32,23 @@ p <- 25
 q <- 50
 dim <- (p - 1) * (q + 1)
 mG <- generate_mg(p, q)
-tB <- generate_tb(p, q, 0.02)
-s <- data_generate(n, p, q, tB, mG, reparam = F)
-```
-
-```{r}
+# tB <- generate_tb(p, q, 0.03)
+load("data/tB.RData")
+tB <- tB
+s <- data_generate(n, p, q, tB, mG, reparam = FALSE)
 initbeta <- rep(0, (p - 1) * (q + 1))
 initgamma <- rep(0, q)
-resid <- compute_residual(s$X[, 1], s$X[, -1], s$U, initgamma, initbeta)
 ```
 
 ```{r}
-gamup <- applyRidgeUpdate(initgamma, resid, s$U, 0.01)
-c1 <- apply_ridge_update(initgamma, resid, s$U, 0.01)
-c1$full_resid
-
-l1cpp <- applyL1Update(initbeta[1:(p - 1)], c1$full_resid, s$X[, -1], 0.03)
-l1r <- apply_L1_update(initbeta[1:(p - 1)], c1$full_resid, s$X[, -1], 0.03)
-
-```
-
-```{r}
-
-sglcpp <- applySparseGLUpdate(
-    initbeta[1:(p - 1)], l1r$full_resid, s$U[, 1], s$X[, -1], 0.03,
-    0.75, 1000, 1e-5)
-sglr <- apply_sparsegl_update(
-    initbeta[1:(p - 1)], l1r$full_resid, s$U[, 1], s$X[, -1], 0.03,
-    0.75, 1000, 1e-5)
-```
-
-```{r}
-node <- 1
-tictoc::tic()
-result <- node_strategy_sparsegl(node, s$X, s$U, 0.03, 0.75, 0.01, tol = 1e-6)
-tictoc::toc()
-```
-
-```{r}
-tictoc::tic()
-result_nodewise <- nodewiseRegression(
-    s$X[, 1], s$X[, -1], s$U,
-    0.03, 0.75, 0.01,
-    rep(0, (p - 1) * (q + 1)), rep(0, q),
-    tol = 1e-6)
-tictoc::toc()
+microbenchmark::microbenchmark(
+    result_sgl <- node_strategy_sparsegl(
+        1, s$X, s$U, 0.03, 0.75, 0.01, tol = 1e-6),
+    result_cpp <- nodewiseRegression(
+        s$X[, 1], s$X[, -1], s$U,
+        0.03, 0.75, 0.01, initbeta, initgamma, tol = 1e-6),
+    times = 10
+)
 ```
 
 ```{r}
@@ -93,31 +65,39 @@ result_cvxr <- node_strategy_cvxr(node, s$X, s$U, 0.03, 0.75, 0.01, beta_cvxr, g
 ```
 
 ```{r}
-mean((result_cvxr$getValue(beta_cvxr) - result_custom$beta)^2)
-mean((result$beta - result_custom$beta)^2)
+mean((result_cvxr$getValue(beta_cvxr) - result_cpp$beta)^2)
+mean((result_sgl$beta - result_cpp$beta)^2)
 result_cvxr$value
 ```
 
 
 ```{r}
-result$objval
+nodewise_reg_wrap <- function(
+    node, X, U, lambda, asparse, regmean,
+    initbeta, initgamma,
+    maxit = 1000, tol = 1e-10) {
+  nodewiseRegression(
+    X[, node], X[, -node], U, lambda, asparse, regmean,
+    initbeta, initgamma, maxit, tol)
+}
 ```
-```{r}
-result_custom$objval
-```
-
-
 
 ## Run
-```{r run, cache=T, cache.path="./cache/"}
-result <- cggr(s$X, s$U, asparse = 0.75, node_strategy_sparsegl)
-result_custom <- cggr(s$X, s$U, asparse = 0.75, node_strategy_custom)
+```{r}
+set.seed(100)
+tictoc::tic()
+result_cpp <- cggr(s$X, s$U, asparse = 0.75, nodewise_reg_wrap)
+tictoc::toc()
+
+tictoc::tic()
+result_sgl <- cggr(s$X, s$U, asparse = 0.75, node_strategy_sparsegl)
+tictoc::toc()
 ```
 
 ### Compare gamma
 ```{r compare gamma, fig.dim=c(10, 3)}
-print(gamma_viz_compare(result$ghat, mG))
-print(gamma_viz_compare(result_custom$ghat, mG))
+print(gamma_viz_compare(result_sgl$ghat, mG))
+print(gamma_viz_compare(result_cpp$ghat, mG))
 ```
 
 ### Compare beta {.tabset}
@@ -126,9 +106,9 @@ for (i in seq_len(6)) {
   cat("\n#### comp", i - 1, "\n")
   cov_lbl <- paste0("component ", i - 1)
   cat("\n")
-  blist <- list(result_custom$bhat[,,i], result$bhat[,,i], tB[,,i])
-  names(blist) <- c("custom", "sparsegl", "true")
-  print(beta_viz_list(blist, cov_lbl, tileborder = T))
+  blist <- list(result_cpp$bhat[,,i], tB[,,i])
+  names(blist) <- c("cpp", "true")
+  print(beta_viz_list(blist, cov_lbl, tileborder = TRUE))
   cat("\n")
 }
 ```
@@ -149,11 +129,15 @@ get_stats <- function(res) {
     omega_err <- omega_err + sum((omega - omhat)^2) / n
   }
   stats$omega_err <- omega_err
-  
+
   return(stats)
 }
-df <- as.data.frame(rbind(get_stats(result), get_stats(result_custom)),
-                    row.names = c("sparsegl", "custom"))
+df <- as.data.frame(
+    rbind(get_stats(result_sgl),
+          get_stats(result_cpp),
+          get_stats(result_custom)),
+          row.names = c("sparsegl", "cpp", "custom"))
 kable(df, digits = 3, padding = 10)  |>
   kable_styling()
+# get_stats(result_cpp)
 ```

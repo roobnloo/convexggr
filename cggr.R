@@ -29,6 +29,7 @@ cggr <- function(X, U, asparse, nodereg_strat = NULL,
                            nlambda = nlambda)
     lambda[node,] <- result$lambda
     lambda_min[node] <- result$lambda_min
+    print(paste("Finished CV for node", node))
   }
 
   # return(list(cv_mse = result$cv_mse,
@@ -46,13 +47,21 @@ cggr <- function(X, U, asparse, nodereg_strat = NULL,
   varhat <- vector(length = d)
 
   for (node in seq_len(d)) {
-    result <- nodereg_strat(node, X, U, lambda_min[node], asparse, regmean)
+    result <- nodereg_strat(
+      node, X, U,
+      lambda_min[node], asparse, regmean,
+      initbeta = rep(0, (d - 1) * (p + 1)), initgamma = rep(0, p))
     rss <- sum(result$resid^2)
     num_nz <- sum(abs(result$beta) > 1e-10) + sum(abs(result$gamma) > 1e-10)
     varhat[node] <- rss  / (n - num_nz)
 
-    bhat_tens[node, -node,] <- -result$beta / varhat[node] # Do we need a scaling factor here? I think so.
-    ghat_mx[node,] <- result$gamma
+    # Do we need a scaling factor here? I think so.
+    bhat_tens[node, -node, ] <- -result$beta / varhat[node]
+    ghat_mx[node, ] <- result$gamma
+    print(
+      paste("Finished regression for node", node,
+            "with obj", result$objval[length(result$objval)])
+    )
   }
 
   bhat_symm <- abind(apply(bhat_tens, 3, symmetrize, simplify = F), along = 3)

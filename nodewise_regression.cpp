@@ -18,10 +18,14 @@ double softThreshold(double x, double lambda)
     return signx * std::max(abs(x) - lambda, 0.0);
 }
 
-// [[Rcpp::export]]
 VectorXd applyRidgeUpdate(
     const VectorXd &v, VectorXd &residual, const MatrixXd &U, double regmean)
 {
+    if (U.cols() != v.rows())
+    {
+        stop("Dimension mismatch during ridge update step!");
+    }
+
     int p = U.rows();
     auto regdiag = VectorXd::Constant(p, regmean).asDiagonal();
     residual += U * v;
@@ -33,7 +37,6 @@ VectorXd applyRidgeUpdate(
     return v_update;
 }
 
-// [[Rcpp::export]]
 VectorXd applyL1Update(
     const VectorXd &b, VectorXd &residual, const MatrixXd &X, double penalty)
 {
@@ -72,10 +75,11 @@ double objective(
         lasso_obj += bcol.lpNorm<1>();
         group_lasso_obj += bcol.norm();
     }
-    return quad_loss +
-           regmean * mean_obj +
-           asparse * lambda * lasso_obj +
-           (1 - asparse) * lambda * group_lasso_obj;
+    double result = quad_loss +
+                    regmean * mean_obj +
+                    asparse * lambda * lasso_obj +
+                    (1 - asparse) * lambda * group_lasso_obj;
+    return result;
 }
 
 double objective_sgl(
@@ -102,13 +106,20 @@ VectorXd sglUpdateStep(
     return maxterm * thresh;
 }
 
-// [[Rcpp::export]]
 VectorXd applySparseGLUpdate(
     const VectorXd &beta_grp, VectorXd &residual,
     const VectorXd &covariate, const MatrixXd &response,
     double lambda, double asparse, int maxit, double tol)
 {
     int n = response.rows();
+
+    if (covariate.rows() != n || 
+        residual.rows() != n ||
+        beta_grp.rows() != response.cols())
+    {
+        stop("Dimension mismatch during sparse group lasso update step!");
+    }
+
     MatrixXd intx = response.array().colwise() * covariate.array();
     residual += intx * beta_grp;
     VectorXd threshold = softThreshold(
@@ -170,29 +181,47 @@ VectorXd applySparseGLUpdate(
     return beta_update;
 }
 
-// TODO
+// TODO: work out the correct variance
 double estimateVariance(
-    const VectorXd &residual, const VectorXd &mean_coef, const MatrixXd &beta)
+    const VectorXd &residual, const VectorXd &gamma, const VectorXd &beta)
 {
-    return 1;
+    int numNonZero = (gamma.array().abs() > 0).count();
+    numNonZero += (beta.array().abs() > 0).count();
+    return residual.squaredNorm() / (residual.rows() - numNonZero);
 }
 
 // [[Rcpp::export]]
 List nodewiseRegression(
     VectorXd y, MatrixXd response, MatrixXd covariates,
     double lambda, double asparse, double regmean,
-    VectorXd initbeta, VectorXd initgamma, int maxit = 1000, double tol = 1e-5)
+    VectorXd initbeta, VectorXd initgamma, int maxit = 1000, double tol = 1e-10)
 {
     int p = response.cols() + 1;
     int q = covariates.cols();
+
+    if (response.rows() != covariates.rows() || y.rows() != response.rows())
+    {
+        stop("Responses and covariates must have the same number of observations!");
+    }
+    if (initbeta.rows() != (p - 1) * (q + 1))
+    {
+        stop("Length of initial beta vector does not match the number "
+             "of responses and covariates!");
+    }
+    if (lambda < 0 || asparse < 0 || asparse > 1 || regmean < 0)
+    {
+        stop("Penalty terms are out of range!");
+    }
+    if (maxit <= 0 || tol <= 0)
+    {
+        stop("Maximium iteration and/or numerical tolerance are out of range!");
+    }
+
     y = y.array() - y.mean();
 
-    // MatrixXd beta(initbeta);
-    // beta.conservativeResize(p-1, q+1);
-    // VectorXd gamma(initgamma);
-    // TODO: fix initialization
-    MatrixXd beta = MatrixXd::Zero(p - 1, q + 1);
-    VectorXd gamma = VectorXd::Zero(q);
+    MatrixXd beta(initbeta);
+    beta.resize(p-1, q+1);
+    VectorXd gamma(initgamma);
 
     VectorXd residual = y - covariates * gamma - response * beta.col(0);
     for (int i = 0; i < q; ++i)
@@ -204,7 +233,6 @@ List nodewiseRegression(
 
     NumericVector objval(maxit + 1);
     objval[0] = objective(residual, gamma, beta, regmean, lambda, asparse);
-    Rcout << "First objective: " << objval[0] << std::endl;
 
     for (int i = 0; i < maxit + 1; ++i)
     {
@@ -222,14 +250,8 @@ List nodewiseRegression(
 
         objval[i + 1] = objective(residual, gamma, beta, regmean, lambda, asparse);
 
-        if (i + 1 == 1)
-        {
-            Rcout << "Second objective: " << objval[i + 1] << std::endl;
-        }
-
         if (abs(objval[i + 1] - objval[i]) < tol)
         {
-            Rcout << "Breaking after (" << (i + 1) << ") iterations.";
             objval = objval[Rcpp::Range(0, i + 1)];
             break;
         }
@@ -239,17 +261,14 @@ List nodewiseRegression(
         warning("Maximum iterations exceeded!");
     }
 
-    VectorXd betahat = VectorXd::Zero((p - 1) * (q + 1));
-    for (int i = 0; i < q + 1; ++i)
-    {
-        betahat.segment(i, p - 1) = beta.col(i);
-    }
+    beta.resize((p-1) * (q+1), 1);
+
+    // double varhat = estimateVariance(residual, gamma, betahat);
 
     return List::create(
-        Named("beta") = betahat,
+        Named("beta") = beta,
         Named("gamma") = gamma,
+        // Named("varhat") = varhat,
         Named("objval") = objval,
         Named("resid") = residual);
 }
-
-// TODO: handle exceptions

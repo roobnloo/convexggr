@@ -1,20 +1,30 @@
-library(sparsegl)
 library(abind)
+library(Rcpp)
+source("utils.R")
 source("cv_cggr_node.R")
 source("node_strategy_sparsegl.R")
+sourceCpp("nodewise_regression.cpp")
+
+nodewise_reg_wrap <- function(node, response, covariates,
+                              lambda, asparse, regmean, initbeta, initgamma,
+                              maxit = 1000, tol = 1e-5) {
+  nodewiseRegression(
+    response[, node], response[, -node], covariates, lambda, asparse, regmean,
+    initbeta, initgamma, maxit, tol)
+}
 
 #' @param X n x d matrix of responses
 #' @param U n x p matrix of covariates
 #' @param regmean small ridge penalty on mean vector
 #' @param asparse SGL mixture penalty
 cggr <- function(X, U, asparse, nodereg_strat = NULL,
-                 regmean = 0.01, nlambda = 100) {
+                 regmean = 0.01, nlambda = 100, verbose = FALSE) {
   stopifnot(is.matrix(X), is.matrix(U),
             nrow(X) == nrow(U),
             regmean > 0)
 
   if (is.null(nodereg_strat)) {
-    nodereg_strat = node_strategy_sparsegl
+    nodereg_strat <- nodewise_reg_wrap
   }
 
   d <- ncol(X)
@@ -26,10 +36,11 @@ cggr <- function(X, U, asparse, nodereg_strat = NULL,
   lambda_min <- vector(length = d)
   for (node in seq_len(d)) {
     result <- cv_cggr_node(node, X, U, asparse, regmean, nodereg_strat,
-                           nlambda = nlambda)
+                           nlambda = nlambda, verbose = verbose)
     lambda[node,] <- result$lambda
     lambda_min[node] <- result$lambda_min
-    print(paste("Finished CV for node", node))
+    if (verbose)
+      print(paste("Finished CV for node", node))
   }
 
   # return(list(cv_mse = result$cv_mse,
@@ -58,10 +69,10 @@ cggr <- function(X, U, asparse, nodereg_strat = NULL,
     # Do we need a scaling factor here? I think so.
     bhat_tens[node, -node, ] <- -result$beta / varhat[node]
     ghat_mx[node, ] <- result$gamma
-    print(
-      paste("Finished regression for node", node,
-            "with obj", result$objval[length(result$objval)])
-    )
+    if (verbose)
+      print(paste("Finished regression for node", node,
+                  "with obj", result$objval[length(result$objval)])
+      )
   }
 
   bhat_symm <- abind(apply(bhat_tens, 3, symmetrize, simplify = F), along = 3)
@@ -77,7 +88,7 @@ cggr <- function(X, U, asparse, nodereg_strat = NULL,
   # Returns the estimated mean vector of the ith observation
   mean <- function(i) {
     prec <- precision(i)
-    mu <- solve(prec) %*% diag(1/varhat) %*% ghat_mx %*% U[i, ]
+    mu <- solve(prec, diag(1 / varhat) %*% ghat_mx %*% U[i, ])
     return(mu)
   }
 

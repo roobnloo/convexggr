@@ -5,22 +5,22 @@ source("gmmreg.R")
 source("cggr.R")
 source("test_utils.R")
 library(kableExtra)
-library(R.matlab)
-library(matlabr)
 library(abind)
 ```
 
 ```{r}
 set.seed(6)
-d <- 10
-p <- 20
+d <- 25
+p <- 50
 n <- 200
-tB <- generate_tb(d, p, ve = 0.01)
+load("data/tB.RData")
+tB <- tB
+# tB <- generate_tb(d, p)
 mG <- matrix(runif(d * p, -0.25, 0.25), d, p) #generate_mg(d, p)
 
 generate <- function(n, d, p, tb, mg, seed) {
   set.seed(seed)
-  s <- data_generate(n, d, p, tb, mg, reparam = FALSE)
+  s <- data_generate(n, d, p, tb, mg)
   return(s)
 }
 ```
@@ -32,11 +32,11 @@ performance <- function(result, tb, s) {
   stats$tpr <- sum(result$bhat != 0 & tb != 0) / sum(tb != 0)
   stats$fpr <- sum(result$bhat != 0 & tb == 0) / sum(tb == 0)
 
-  beta_err <- 0
-  for (i in 1:d) {
-    beta_err <- beta_err + sqrt(sum((tb[i, , ] - result$bhat[i, , ])^2))
-  }
-  stats$beta_err <- beta_err
+#   beta_err <- 0
+#   for (i in 1:d) {
+#     beta_err <- beta_err + sqrt(sum((tb[i, , ] - result$bhat[i, , ])^2))
+#   }
+#   stats$beta_err <- beta_err
 
   mean_err <- 0
   for (i in 1:n) {
@@ -70,33 +70,41 @@ for (i in seq_along(s_list)) {
 
 
 ```{r}
-gmmreg_results <- vector("list", length = trials)
+# gmmreg_results <- vector("list", length = trials)
 cggr_results <- vector("list", length = trials)
 for (i in seq_along(s_list)) {
   s <- s_list[[i]]
-  g_result <- gmmreg(s$X, s$U, 0.75)
-  c_result <- cggr(s$X, s$U, 0.75)
+#   g_result <- gmmreg(s$X, s$U, 0.70)
+  c_result <- cggr(s$X, s$U, 0.70, verbose = TRUE)
   gmmreg_results[[i]] <- g_result
   cggr_results[[i]] <- c_result
+  print(paste("Finished trial", i))
 }
+```
 
-gmmreg_stats <- matrix(nrow = trials, ncol = 5)
-cggr_stats <- matrix(nrow = trials, ncol = 5)
+```{r}
+gmmreg_stats <- matrix(nrow = trials, ncol = 4)
+cggr_stats <- matrix(nrow = trials, ncol = 4)
 for (i in seq_len(trials)) {
   gmmreg_stats[i, ] <- unlist(performance(gmmreg_results[[i]], tB, s_list[[i]]))
   cggr_stats[i, ] <- unlist(performance(cggr_results[[i]], tB, s_list[[i]]))
 }
 
-stats_gmmreg <- performance(gmmreg_results[[1]], tB, s_list[[i]])
-stats_cggr <- performance(cggr_results[[1]], tB, s_list[[i]])
-stats <- rbind(stats_gmmreg, stats_cggr)
-kable(as.data.frame(stats), digits = 3, padding = 10)  |>
-  kable_styling()
+gmmreg_stats_mean <- apply(gmmreg_stats, 2, mean)
+cggr_stats_mean <- apply(cggr_stats, 2, mean)
+stats <- rbind(gmmreg_stats_mean, cggr_stats_mean)
+colnames(stats) <- c("TPR", "FPR", "mean_err", "omega_err")
+stats
 ```
 
 ```{r}
-gmmreg_stats
-cggr_stats
+stats_gmmreg <- apply(gmmreg_stats, 2, mean)
+stats_cggr <- apply(cggr_stats, 2, mean)
+stats <- rbind(stats_gmmreg, stats_cggr)
+colnames(stats) <- c("TPR", "FPR", "mean_err", "omega_err")
+stats
+# kable(as.data.frame(stats), digits = 3, padding = 10)  |>
+#   kable_styling()
 ```
 
 
@@ -104,8 +112,8 @@ cggr_stats
 ```{r}
 for (i in seq_len(6)) {
   cov_lbl <- as.character(i - 1)
-  beta_list <- list(GMMReg = gmmreg_results[[1]]$bhat[, , i],
-                    CGGR = cggr_results[[1]]$bhat[, , i],
+  beta_list <- list(GMMReg = gmmreg_results[[20]]$bhat[, , i],
+                    CGGR = cggr_results[[20]]$bhat[, , i],
                     Actual = tB[, , i])
   print(beta_viz_list(beta_list, cov_lbl, tileborder = TRUE))
 }
@@ -118,6 +126,23 @@ print(gamma_viz_list(list(
   CGGR = cggr_results[[1]]$ghat,
   Actual = mG
 )))
+```
+
+
+```{r}
+a_seq <- seq(0.1, 1, by = 0.1)
+perf <- vector("list", length = 10)
+s <- s_list[[3]]
+for (i in 1:10) {
+    cggr_res <- cggr(s$X, s$U, a_seq[i])
+    perf[[i]] <- performance(cggr_res, tB, s)
+}
+Reduce(cbind, perf)
+```
+
+```{r}
+cr <- cggr(s$X, s$U, asparse = 0.2)
+performance(cr, tB, s)
 ```
 
 # Matlab

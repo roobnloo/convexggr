@@ -41,6 +41,20 @@ initgamma <- rep(0, q)
 ```
 
 ```{r}
+tictoc::tic()
+result_sgl <- node_strategy_sparsegl(
+    1, s$X, s$U, 0.03, 0.75, 0.01, tol = 1e-6)
+tictoc::toc()
+```
+```{r}
+tictoc::tic()
+result_cpp <- nodewiseRegression(
+    s$X[, 1], s$X[, -1], s$U,
+    0.03, 0.75, 0.01, initbeta, initgamma, tol = 1e-6)
+tictoc::toc()
+```
+
+```{r}
 microbenchmark::microbenchmark(
     result_sgl <- node_strategy_sparsegl(
         1, s$X, s$U, 0.03, 0.75, 0.01, tol = 1e-6),

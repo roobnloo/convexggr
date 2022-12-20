@@ -14,7 +14,7 @@ node_strategy_sparsegl <- function(node, X, U, lambda, asparse, regmean,
             lambda >= 0, length(lambda) == 1)
 
   y <- scale(X[, node], scale = F)
-  W <- cbind(X[, -node], interaction_mx(X[, -node], U))
+  W <- cbind(X[, -node], intxmx(X[, -node], U))
 
   if (is.null(initbeta)) {
     initbeta <- rep(0, (p+1)*(d-1))

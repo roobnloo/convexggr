@@ -234,7 +234,7 @@ List nodewiseRegression(
     NumericVector objval(maxit + 1);
     objval[0] = objective(residual, gamma, beta, regmean, lambda, asparse);
 
-    for (int i = 0; i < maxit + 1; ++i)
+    for (int i = 0; i < maxit; ++i)
     {
         gamma = applyRidgeUpdate(gamma, residual, covariates, regmean);
 
@@ -256,17 +256,17 @@ List nodewiseRegression(
             break;
         }
     }
-    if (objval.length() >= maxit)
+    if (objval.length() == maxit + 1)
     {
+        // std::cout << "Maximum iterations exceeded!" << std::endl;
         warning("Maximum iterations exceeded!");
     }
 
-    beta.resize((p-1) * (q+1), 1);
-
+    VectorXd betavec(Map<VectorXd>(beta.data(), beta.cols() * beta.rows()));
     // double varhat = estimateVariance(residual, gamma, betahat);
 
     return List::create(
-        Named("beta") = beta,
+        Named("beta") = betavec,
         Named("gamma") = gamma,
         // Named("varhat") = varhat,
         Named("objval") = objval,

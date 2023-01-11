@@ -2,8 +2,8 @@ source("utils.R")
 
 cv_cggr_node <- function(node, response, covariates,
                          asparse, regmean, nodereg_strat,
+                         maxit, tol,
                          nlambda = 100, lambda_factor = 1e-4, nfolds = 5,
-                         maxiter = 1000, tol = 1e-5,
                          verbose = FALSE) {
   d <- ncol(response)
   p <- ncol(covariates)
@@ -34,7 +34,7 @@ cv_cggr_node <- function(node, response, covariates,
       sgl_node <- nodereg_strat(
         node, response_train, covariates_train,
         lambda[lamid], asparse, regmean,
-        initbeta, initgamma, maxit = maxiter, tol = tol)
+        initbeta, initgamma, maxit, tol)
 
       resid <- y_test - mean(y_train) - # subtract mean since y is centered
            covariates_test %*% sgl_node$gamma -

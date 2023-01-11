@@ -107,20 +107,15 @@ VectorXd sglUpdateStep(
 }
 
 VectorXd applySparseGLUpdate(
-    const VectorXd &beta_grp, VectorXd &residual,
-    const VectorXd &covariate, const MatrixXd &response,
+    const VectorXd &beta_grp, VectorXd &residual, const MatrixXd &intx,
     double lambda, double asparse, int maxit, double tol)
 {
-    int n = response.rows();
-
-    if (covariate.rows() != n || 
-        residual.rows() != n ||
-        beta_grp.rows() != response.cols())
+    int n = intx.rows();
+    if (residual.rows() != n || intx.cols() != beta_grp.rows())
     {
         stop("Dimension mismatch during sparse group lasso update step!");
     }
 
-    MatrixXd intx = response.array().colwise() * covariate.array();
     residual += intx * beta_grp;
     VectorXd threshold = softThreshold(
         intx.transpose() * residual / n, asparse * lambda);
@@ -181,7 +176,7 @@ VectorXd applySparseGLUpdate(
     return beta_update;
 }
 
-// TODO: work out the correct variance
+// TODO: is the variance correct?
 double estimateVariance(
     const VectorXd &residual, const VectorXd &gamma, const VectorXd &beta)
 {
@@ -224,11 +219,13 @@ List nodewiseRegression(
     VectorXd gamma(initgamma);
 
     VectorXd residual = y - covariates * gamma - response * beta.col(0);
+    std::vector<MatrixXd> intxs(q);
     for (int i = 0; i < q; ++i)
     {
-        MatrixXd intxgrp =
+        MatrixXd intx =
             response.array().colwise() * covariates.col(i).array();
-        residual -= intxgrp * beta.col(i + 1);
+        intxs[i] = intx;
+        residual -= intx * beta.col(i + 1);
     }
 
     NumericVector objval(maxit + 1);
@@ -244,7 +241,7 @@ List nodewiseRegression(
         for (int j = 0; j < q; ++j)
         {
             beta.col(j + 1) = applySparseGLUpdate(
-                beta.col(j + 1), residual, covariates.col(j), response,
+                beta.col(j + 1), residual, intxs[j],
                 lambda, asparse, maxit, tol);
         }
 
@@ -256,6 +253,7 @@ List nodewiseRegression(
             break;
         }
     }
+    // std::cout << "Finished in " << objval.length() << " iterations." << std::endl;
     if (objval.length() == maxit + 1)
     {
         // std::cout << "Maximum iterations exceeded!" << std::endl;
@@ -263,12 +261,12 @@ List nodewiseRegression(
     }
 
     VectorXd betavec(Map<VectorXd>(beta.data(), beta.cols() * beta.rows()));
-    // double varhat = estimateVariance(residual, gamma, betahat);
+    double varhat = estimateVariance(residual, gamma, betavec);
 
     return List::create(
         Named("beta") = betavec,
         Named("gamma") = gamma,
-        // Named("varhat") = varhat,
+        Named("varhat") = varhat,
         Named("objval") = objval,
         Named("resid") = residual);
 }

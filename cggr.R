@@ -7,7 +7,7 @@ sourceCpp("nodewise_regression.cpp")
 
 nodewise_reg_wrap <- function(node, response, covariates,
                               lambda, asparse, regmean, initbeta, initgamma,
-                              maxit = 1000, tol = 1e-5) {
+                              maxit, tol) {
   nodewiseRegression(
     response[, node], response[, -node], covariates, lambda, asparse, regmean,
     initbeta, initgamma, maxit, tol)
@@ -18,7 +18,8 @@ nodewise_reg_wrap <- function(node, response, covariates,
 #' @param regmean small ridge penalty on mean vector
 #' @param asparse SGL mixture penalty
 cggr <- function(X, U, asparse, nodereg_strat = NULL,
-                 regmean = 0.01, nlambda = 100, verbose = FALSE) {
+                 regmean = 0.01, nlambda = 100, maxit = 3e+06, tol = 1e-8,
+                 verbose = FALSE) {
   stopifnot(is.matrix(X), is.matrix(U),
             nrow(X) == nrow(U),
             regmean > 0)
@@ -36,6 +37,7 @@ cggr <- function(X, U, asparse, nodereg_strat = NULL,
   lambda_min <- vector(length = d)
   for (node in seq_len(d)) {
     result <- cv_cggr_node(node, X, U, asparse, regmean, nodereg_strat,
+                           maxit, tol,
                            nlambda = nlambda, verbose = verbose)
     lambda[node,] <- result$lambda
     lambda_min[node] <- result$lambda_min
@@ -62,17 +64,15 @@ cggr <- function(X, U, asparse, nodereg_strat = NULL,
       node, X, U,
       lambda_min[node], asparse, regmean,
       initbeta = rep(0, (d - 1) * (p + 1)), initgamma = rep(0, p))
-    rss <- sum(result$resid^2)
-    num_nz <- sum(abs(result$beta) > 1e-10) + sum(abs(result$gamma) > 1e-10)
-    varhat[node] <- rss  / (n - num_nz)
 
     # Do we need a scaling factor here? I think so.
+    varhat[node] <- result$varhat
     bhat_tens[node, -node, ] <- -result$beta / varhat[node]
     ghat_mx[node, ] <- result$gamma
-    if (verbose)
+    if (verbose) {
       print(paste("Finished regression for node", node,
-                  "with obj", result$objval[length(result$objval)])
-      )
+                  "with obj", result$objval[length(result$objval)]))
+    }
   }
 
   bhat_symm <- abind(apply(bhat_tens, 3, symmetrize, simplify = F), along = 3)

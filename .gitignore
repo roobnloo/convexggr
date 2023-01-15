@@ -11,3 +11,4 @@ InputStreamByteWrapper.class
 MatlabServer.m
 .vscode/
 .editorconfig
+compile_flags.txt

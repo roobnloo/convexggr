@@ -180,52 +180,67 @@ VectorXd applySparseGLUpdate(
 double estimateVariance(
     const VectorXd &residual, const VectorXd &gamma, const VectorXd &beta)
 {
-    int numNonZero = (gamma.array().abs() > 0).count();
-    numNonZero += (beta.array().abs() > 0).count();
+    int numNonZero = (beta.array().abs() > 0).count();
     return residual.squaredNorm() / (residual.rows() - numNonZero);
 }
 
-// [[Rcpp::export]]
-List nodewiseRegression(
-    VectorXd y, MatrixXd response, MatrixXd covariates,
+NumericVector getLambda(
+    NumericVector inlambda, int nlambda, double lambdaFactor,
+    const VectorXd &y, const std::vector<MatrixXd> &intxs)
+{
+    if (inlambda.size() > 0)
+    {
+        NumericVector inSorted = inlambda.sort(true);
+        if (inSorted[inSorted.size() - 1] <= 0)
+        {
+            stop("Provided lambda terms are not all positive!");
+        }
+        return inSorted;
+    }
+    double lamdaMax = 0;
+    for (MatrixXd intx : intxs)
+    {
+        double mc = (intx.transpose() * y).array().abs().maxCoeff();
+        if (mc > lamdaMax)
+        {
+            lamdaMax = mc;
+        }
+    }
+
+    NumericVector loglinInterp(nlambda);
+    double delta = log(lambdaFactor) / (nlambda - 1);
+    for (int i = 0; i < nlambda; ++i)
+    {
+        loglinInterp[i] = lamdaMax * exp(i * delta);
+    }
+    return loglinInterp;
+}
+
+struct RegressionResult {
+    VectorXd gamma;
+    VectorXd beta;
+    VectorXd resid;
+    double varhat;
+    double objval;
+};
+
+RegressionResult nodewiseRegressionInit(
+    const VectorXd &y, const MatrixXd &response, const MatrixXd &covariates,
+    const std::vector<MatrixXd> &intxs,
+    const VectorXd &gammaInit, const VectorXd &betaInit,
     double lambda, double asparse, double regmean,
-    VectorXd initbeta, VectorXd initgamma, int maxit = 1000, double tol = 1e-10)
+    int maxit, double tol)
 {
     int p = response.cols() + 1;
     int q = covariates.cols();
-
-    if (response.rows() != covariates.rows() || y.rows() != response.rows())
-    {
-        stop("Responses and covariates must have the same number of observations!");
-    }
-    if (initbeta.rows() != (p - 1) * (q + 1))
-    {
-        stop("Length of initial beta vector does not match the number "
-             "of responses and covariates!");
-    }
-    if (lambda < 0 || asparse < 0 || asparse > 1 || regmean < 0)
-    {
-        stop("Penalty terms are out of range!");
-    }
-    if (maxit <= 0 || tol <= 0)
-    {
-        stop("Maximium iteration and/or numerical tolerance are out of range!");
-    }
-
-    y = y.array() - y.mean();
-
-    MatrixXd beta(initbeta);
+    VectorXd gamma(gammaInit);
+    MatrixXd beta(betaInit);
     beta.resize(p-1, q+1);
-    VectorXd gamma(initgamma);
 
     VectorXd residual = y - covariates * gamma - response * beta.col(0);
-    std::vector<MatrixXd> intxs(q);
-    for (int i = 0; i < q; ++i)
+    for (int i = 0; i < intxs.size(); ++i)
     {
-        MatrixXd intx =
-            response.array().colwise() * covariates.col(i).array();
-        intxs[i] = intx;
-        residual -= intx * beta.col(i + 1);
+        residual -= intxs[i] * beta.col(i + 1);
     }
 
     NumericVector objval(maxit + 1);
@@ -233,6 +248,7 @@ List nodewiseRegression(
 
     for (int i = 0; i < maxit; ++i)
     {
+        // std::cout << "Iteration: " << i << std::endl;
         gamma = applyRidgeUpdate(gamma, residual, covariates, regmean);
 
         beta.col(0) = applyL1Update(
@@ -263,10 +279,75 @@ List nodewiseRegression(
     VectorXd betavec(Map<VectorXd>(beta.data(), beta.cols() * beta.rows()));
     double varhat = estimateVariance(residual, gamma, betavec);
 
+    return RegressionResult {
+        gamma, betavec, residual, varhat, objval[objval.size() - 1]
+    };
+}
+
+// [[Rcpp::export]]
+List nodewiseRegression(
+    VectorXd y, MatrixXd response, MatrixXd covariates,
+    NumericVector lambdas, double asparse, double regmean,
+    int nlambda = 100, double lambdaFactor = 1e-4,
+    int maxit = 1000, double tol = 1e-8)
+{
+    int p = response.cols() + 1;
+    int q = covariates.cols();
+
+    if (response.rows() != covariates.rows() || y.rows() != response.rows())
+    {
+        stop("Responses and covariates must have the same number of observations!");
+    }
+    if (asparse < 0 || asparse > 1 || regmean < 0)
+    {
+        stop("Penalty terms are out of range!");
+    }
+    if (maxit <= 0 || tol <= 0)
+    {
+        stop("Maximium iteration and/or numerical tolerance are out of range!");
+    }
+
+    std::vector<MatrixXd> intxs(q);
+    for (int i = 0; i < q; ++i)
+    {
+        MatrixXd intx =
+            response.array().colwise() * covariates.col(i).array();
+        intxs[i] = intx;
+    }
+
+    lambdas = getLambda(lambdas, nlambda, lambdaFactor, y, intxs);
+    nlambda = lambdas.size(); // TODO: a bit of a hack for user-provided lambdas
+
+    MatrixXd gammaFull(q, nlambda);
+    MatrixXd betaFull((p-1)*(q+1), nlambda);
+    VectorXd varhatFull(nlambda);
+    MatrixXd residualFull(y.rows(), nlambda);
+    VectorXd objectiveFull(nlambda);
+
+    RegressionResult regResult;
+    MatrixXd beta(MatrixXd::Zero(p-1, q+1));
+    VectorXd gamma(VectorXd::Zero(q));
+    for (int i = 0; i < nlambda; ++i)
+    {
+        regResult = nodewiseRegressionInit(
+            y, response, covariates, intxs, gamma, beta,
+            lambdas[i], asparse, regmean, maxit, tol);
+
+        gammaFull.col(i) = regResult.gamma;
+        betaFull.col(i) = regResult.beta;
+        residualFull.col(i) = regResult.resid;
+        varhatFull(i) = regResult.varhat;
+        objectiveFull(i) = regResult.objval;
+        // Use gamma and beta as initializer for next lambda (warm-starts)
+        gamma = regResult.gamma;
+        beta = regResult.beta;
+    }
+
     return List::create(
-        Named("beta") = betavec,
-        Named("gamma") = gamma,
-        Named("varhat") = varhat,
-        Named("objval") = objval,
-        Named("resid") = residual);
+        Named("beta") = betaFull,
+        Named("gamma") = gammaFull,
+        Named("varhat") = varhatFull,
+        Named("objval") = objectiveFull,
+        Named("resid") = residualFull,
+        Named("lambdas") = lambdas);
 }

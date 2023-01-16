@@ -1,49 +1,36 @@
 source("utils.R")
 
-cv_cggr_node <- function(node, response, covariates,
-                         asparse, regmean, nodereg_strat,
-                         maxit, tol,
-                         nlambda = 100, lambda_factor = 1e-4, nfolds = 5,
-                         verbose = FALSE) {
-  d <- ncol(response)
-  p <- ncol(covariates)
-  num <- nrow(response)
+cv_cggr_node <- function(node, responses, covariates,
+                         lambdas, asparse, regmean,
+                         maxit, tol, nfolds, verbose = FALSE) {
+  p <- ncol(responses)
+  q <- ncol(covariates)
+  n <- nrow(responses)
+  nlambda <- length(lambdas)
 
-  y <- scale(response[, node], scale = FALSE)
-  respintx <- cbind(response[, -node], intxmx(response[, -node], covariates))
-  lam_max <- max(abs(t(respintx) %*% y))
-  lambda <- lam_max * exp(seq(log(1), log(lambda_factor), length = nlambda))
-
+  intx <- cbind(responses[, -node], intxmx(responses[, -node], covariates))
   foldsplit <- split(
-    seq_len(num), cut(sample(seq_len(num)), nfolds, labels = FALSE))
-  mses <- matrix(nrow = nfolds, ncol = length(lambda))
-  for (i in seq_along(foldsplit)) {
-    if (verbose)
-      print(paste("Begin CV fold", i))
-    foldids <- foldsplit[[i]]
-    y_train <- y[-foldids]
-    response_train <- response[-foldids,]
-    covariates_train <- covariates[-foldids,]
-    y_test <- y[foldids]
-    respintx_test <- respintx[foldids,]
-    covariates_test <- covariates[foldids,]
+    seq_len(n), cut(sample(seq_len(n)), nfolds, labels = FALSE))
+  mses <- matrix(nrow = nfolds, ncol = nlambda)
+  for (i in seq_len(nfolds)) {
+    testids <- foldsplit[[i]]
+    y_train <- responses[-testids, node]
+    responses_train <- responses[-testids, -node]
+    covariates_train <- covariates[-testids, ]
 
-    initbeta <- rep(0, (p + 1) * (d - 1))
-    initgamma <- rep(0, p)
-    for (lamid in seq_along(lambda)) {
-      sgl_node <- nodereg_strat(
-        node, response_train, covariates_train,
-        lambda[lamid], asparse, regmean,
-        initbeta, initgamma, maxit, tol)
+    ntest <- length(testids)
+    y_test <- responses[testids, node]
+    y_test <- matrix(rep(y_test, times = nlambda), nrow = ntest, ncol = nlambda)
+    intx_test <- intx[testids, ]
+    covariates_test <- covariates[testids, ]
 
-      resid <- y_test - mean(y_train) - # subtract mean since y is centered
-           covariates_test %*% sgl_node$gamma -
-           respintx_test %*% sgl_node$beta
+    nodereg <- nodewiseRegression(
+      y_train, responses_train, covariates_train, asparse, regmean,
+      lambdas = lambdas, maxit = maxit, tol = tol, verbose = verbose)
 
-      mses[i, lamid] <- sum(resid^2) / (2 * length(resid))
-      initgamma <- sgl_node$gamma
-      initbeta <- sgl_node$beta
-    }
+    resid_test <- y_test - covariates_test %*% nodereg["gamma"][[1]] -
+                  intx_test %*% nodereg["beta"][[1]]
+    mses[i, ] <- apply(resid_test, 2, \(x) sum(x^2) / (ntest - 1))
     if (verbose)
       print(paste("Finished CV fold", i))
   }
@@ -51,7 +38,6 @@ cv_cggr_node <- function(node, response, covariates,
   cv_mse <- apply(mses, 2, mean)
   return(list(
     cv_mse = cv_mse,
-    lambda = lambda,
-    lambda_min = lambda[which.min(cv_mse)]
+    lambda_min = lambdas[which.min(cv_mse)]
   ))
 }

@@ -229,7 +229,7 @@ RegressionResult nodewiseRegressionInit(
     const std::vector<MatrixXd> &intxs,
     const VectorXd &gammaInit, const VectorXd &betaInit,
     double lambda, double asparse, double regmean,
-    int maxit, double tol)
+    int maxit, double tol, bool verbose)
 {
     int p = response.cols() + 1;
     int q = covariates.cols();
@@ -248,7 +248,8 @@ RegressionResult nodewiseRegressionInit(
 
     for (int i = 0; i < maxit; ++i)
     {
-        // std::cout << "Iteration: " << i << std::endl;
+        if (verbose)
+            std::cout << "Iteration: " << i << std::endl;
         gamma = applyRidgeUpdate(gamma, residual, covariates, regmean);
 
         beta.col(0) = applyL1Update(
@@ -287,9 +288,10 @@ RegressionResult nodewiseRegressionInit(
 // [[Rcpp::export]]
 List nodewiseRegression(
     VectorXd y, MatrixXd response, MatrixXd covariates,
-    NumericVector lambdas, double asparse, double regmean,
+    double asparse, double regmean,
+    NumericVector lambdas = NumericVector::create(),
     int nlambda = 100, double lambdaFactor = 1e-4,
-    int maxit = 1000, double tol = 1e-8)
+    int maxit = 1000, double tol = 1e-8, bool verbose = false)
 {
     int p = response.cols() + 1;
     int q = covariates.cols();
@@ -316,7 +318,7 @@ List nodewiseRegression(
     }
 
     lambdas = getLambda(lambdas, nlambda, lambdaFactor, y, intxs);
-    nlambda = lambdas.size(); // TODO: a bit of a hack for user-provided lambdas
+    nlambda = lambdas.size(); // a bit of a hack for user-provided lambdas
 
     MatrixXd gammaFull(q, nlambda);
     MatrixXd betaFull((p-1)*(q+1), nlambda);
@@ -329,9 +331,11 @@ List nodewiseRegression(
     VectorXd gamma(VectorXd::Zero(q));
     for (int i = 0; i < nlambda; ++i)
     {
+        if (verbose)
+            std::cout << "Regression for lambda index" << i << std::endl;
         regResult = nodewiseRegressionInit(
             y, response, covariates, intxs, gamma, beta,
-            lambdas[i], asparse, regmean, maxit, tol);
+            lambdas[i], asparse, regmean, maxit, tol, verbose);
 
         gammaFull.col(i) = regResult.gamma;
         betaFull.col(i) = regResult.beta;

@@ -2,7 +2,8 @@ source("utils.R")
 
 cv_cggr_node <- function(node, responses, covariates,
                          lambdas, asparse, regmean,
-                         maxit, tol, nfolds, verbose = FALSE) {
+                         maxit, tol, nfolds,
+                         verbose = FALSE, parallel = FALSE) {
   p <- ncol(responses)
   q <- ncol(covariates)
   n <- nrow(responses)
@@ -31,8 +32,8 @@ cv_cggr_node <- function(node, responses, covariates,
     resid_test <- y_test - covariates_test %*% nodereg["gamma"][[1]] -
                   intx_test %*% nodereg["beta"][[1]]
     mses[i, ] <- apply(resid_test, 2, \(x) sum(x^2) / (ntest - 1))
-    if (verbose)
-      print(paste("Finished CV fold", i))
+    # if (verbose)
+    #   print(paste("Finished CV fold", i))
   }
 
   cv_mse <- apply(mses, 2, mean)

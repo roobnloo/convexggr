@@ -47,16 +47,17 @@ cggr <- function(responses, covariates, asparse,
     ))
   }
 
+  if (verbose) {
+    print("Begin initial run...")
+    tictoc::tic()
+  }
   if (parallel) {
     print("Running in parallel...")
-    tictoc::tic()
     reg_result <- parallel::mclapply(seq_len(p), nodewise)
-    tictoc::toc()
   } else {
-    tictoc::tic()
     reg_result <- lapply(seq_len(p), nodewise)
-    tictoc::toc()
   }
+
   for (node in seq_len(p)) {
     lambdas[, node] <- reg_result[[node]]$lambdas
     beta[, , node] <- reg_result[[node]]$beta
@@ -66,29 +67,40 @@ cggr <- function(responses, covariates, asparse,
     objval[, node] <- reg_result[[node]]$objval
   }
 
-  if (verbose)
+  if (verbose) {
     print("Finished initial run")
+    tictoc::toc()
+    print("Begin cross-validation...")
+    tictoc::tic()
+  }
 
   cv_lambda_idx <- vector(length = p)
   cv_mse <- matrix(nrow = p, ncol = nlambda)
-  for (node in seq_len(p)) {
-    if (verbose)
-      print(paste("CV for node", node))
+
+  cv_node <- function(node) {
     cv_result <- cv_cggr_node(
       node, responses, covariates,
       lambdas[, node], asparse, regmean, maxit, tol, nfolds, verbose)
-    cv_mse[node, ] <- cv_result$cv_mse
-    cv_lambda_idx[node] <- which.min(cv_result$cv_mse)
+    if (verbose)
+      print(paste("Done cross-validating node", node))
+    return(cv_result)
   }
 
-  if (verbose)
-    print("Finished cross validating all nodes")
+  if (parallel) {
+    cv_results <- parallel::mclapply(seq_len(p), cv_node)
+  } else {
+    cv_results <- lapply(seq_len(p), cv_node)
+  }
 
-  # return(list(lambda = lambdas,
-  #             beta = beta,
-  #             objval = objval,
-  #             cv_mse = cv_mse,
-  #             cv_lambda = cv_lambda_idx))
+  for (node in seq_len(p)) {
+    cv_mse[node, ] <- cv_results[[node]]$cv_mse
+    cv_lambda_idx[node] <- which.min(cv_results[[node]]$cv_mse)
+  }
+
+  if (verbose) {
+    print("Finished cross validating all nodes")
+    tictoc::toc()
+  }
 
   ghat_select <- cbind(rep(seq(q), times = p),
                        rep(cv_lambda_idx, each = q),
@@ -133,11 +145,4 @@ cggr <- function(responses, covariates, asparse,
               cv_lambda_idx = cv_lambda_idx,
               precision = precision,
               mean = mean))
-
-  # return(list(ghat = ghat_mx,
-  #             bhat = bhat_symm,
-  #             bhat_asym = bhat_tens,
-  #             varhat = varhat,
-  #             precision = precision,
-  #             mean = mean))
 }

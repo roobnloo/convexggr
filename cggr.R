@@ -32,6 +32,8 @@ cggr <- function(responses, covariates, asparse,
   objval <- matrix(nrow = nlambda, ncol = p)
 
   nodewise <- function(node) {
+    if (verbose)
+      print(paste("Starting initial run for node", node))
     nodereg <- nodewiseRegression(
       responses[, node], responses[, -node], covariates, asparse, regmean,
       nlambda = nlambda, lambdaFactor = lambdafactor, maxit = maxit, tol = tol)

@@ -1,21 +1,38 @@
 #include <Rcpp.h>
 #include <RcppEigen.h>
+#include <limits>
 using namespace Rcpp;
 using namespace Eigen;
 
 // [[Rcpp::depends(RcppEigen)]]
 
-VectorXd softThreshold(const VectorXd &x, double lambda)
-{
-    MatrixXd thresh = MatrixXd::Zero(x.rows(), 2);
-    thresh.col(0) = x.array().abs() - lambda;
-    return x.array().sign() * thresh.array().rowwise().maxCoeff();
-}
-
 double softThreshold(double x, double lambda)
 {
-    int signx = (double(0) < x) - (x < double(0));
-    return signx * std::max(abs(x) - lambda, 0.0);
+    double diff = std::abs(x) - lambda;
+    if (diff < 0)
+    {
+        return 0;
+    }
+    int signx;
+    if (std::abs(x) <= std::numeric_limits<double>::epsilon())
+    {
+        signx = 0;
+    }
+    else
+    {
+        signx = (double(0) < x) - (x < double(0));
+    }
+    return signx * diff;
+}
+
+VectorXd softThreshold(const VectorXd &x, double lambda)
+{
+    VectorXd thresh(x.rows());
+    for (int i = 0; i < x.rows(); ++i)
+    {
+        thresh(i) = softThreshold(x(i), lambda);
+    }
+    return thresh;
 }
 
 VectorXd applyRidgeUpdate(
@@ -48,17 +65,58 @@ VectorXd applyL1Update(
         stop("Dimension mismatch during L1 update step!");
     }
 
-    VectorXd v_update(p);
+    VectorXd bnext(b);
     for (int i = 0; i < b.rows(); ++i)
     {
-        auto uslice = X.col(i);
-        VectorXd presid(residual);
-        presid += b(i) * uslice;
-        v_update(i) = softThreshold(b(i) + residual.dot(uslice) / n, penalty);
-        residual = presid - v_update(i) * uslice;
+        auto xslice = X.col(i);
+        residual += bnext(i) * xslice;
+        // VectorXd presid = residual + bnext(i) * xslice;
+        double dot = residual.dot(xslice);
+        double denom = xslice.squaredNorm() / n;
+        bnext(i) = softThreshold(dot / n, penalty) / denom;
+        residual -= bnext(i) * xslice;
     }
 
-    return v_update;
+    return bnext;
+}
+
+VectorXd applyL1UpdateComplete(
+    const VectorXd &b, VectorXd &residual, const MatrixXd &X, double penalty)
+{
+    int n = X.rows();
+    int p = b.rows();
+
+    if (residual.rows() != n || X.cols() != p)
+    {
+        stop("Dimension mismatch during L1 update step!");
+    }
+
+    VectorXd bprev(b);
+    VectorXd bnext(b);
+    int iter = 0;
+    while (iter < 1000)
+    {
+        for (int i = 0; i < b.rows(); ++i)
+        {
+            auto xslice = X.col(i);
+            residual += bnext(i) * xslice;
+            // VectorXd presid = residual + bnext(i) * xslice;
+            double dot = residual.dot(xslice);
+            double denom = xslice.squaredNorm() / n;
+            bnext(i) = softThreshold(dot / n, penalty) / denom;
+            residual -= bnext(i) * xslice;
+        }
+        VectorXd bdiff = (bnext - bprev);
+        double maxcoeff = bdiff.array().abs().maxCoeff();
+        if (maxcoeff < 1e-10)
+        {
+            break;
+        }
+        bprev = bnext;
+        ++iter;
+    }
+
+    return bnext;
 }
 
 double objective(
@@ -95,15 +153,19 @@ VectorXd sglUpdateStep(
     const VectorXd &center, const VectorXd &grad,
     double step, double lambda, double asparse)
 {
-    VectorXd thresh = softThreshold(center - step * grad,
-                                    step * asparse * lambda);
+    VectorXd thresh = softThreshold(
+        center - step * grad, step * asparse * lambda);
     double threshnorm = thresh.norm();
-    if (threshnorm == 0)
+    if (threshnorm <= step * (1 - asparse) * lambda)
     {
         return VectorXd::Zero(center.rows());
     }
-    double maxterm = std::max(0.0, 1 - step * (1 - asparse) * lambda / threshnorm);
-    return maxterm * thresh;
+    double normterm = 1 - step * (1 - asparse) * lambda / threshnorm;
+    if (normterm < 0)
+    {
+        return VectorXd::Zero(center.rows());
+    }
+    return normterm * thresh;
 }
 
 VectorXd applySparseGLUpdate(
@@ -135,7 +197,7 @@ VectorXd applySparseGLUpdate(
     {
         objnew = objective_sgl(
             residual - intx * beta_update, beta_update, lambda, asparse);
-        if (abs(objnew - obj) < tol)
+        if (std::abs(objnew - obj) < tol)
         {
             break;
         }
@@ -262,14 +324,14 @@ RegressionResult nodewiseRegressionInit(
         // if (verbose)
         //     std::cout << "Iteration: " << i << ":: obj:" << objval[i+1] << std::endl;
         
-        if (i > 4 && abs(objval[i + 1] - objval[i - 1]) < 1e-10
-            && abs(objval[i] - objval[i - 2]) < 1e-10)
+        if (i > 4 && std::abs(objval[i + 1] - objval[i - 1]) < 1e-20
+            && std::abs(objval[i] - objval[i - 2]) < 1e-20)
         {
             std::cout << "potential oscillation" << std::endl;
             stop("Potential oscillation!");
         }
 
-        if (abs(objval[i + 1] - objval[i]) < tol)
+        if (std::abs(objval[i + 1] - objval[i]) < tol)
         {
             objval = objval[Rcpp::Range(0, i + 1)];
             break;
@@ -350,10 +412,6 @@ List nodewiseRegression(
     {
         if (verbose)
             std::cout << "Regression for lambda index" << i << std::endl;
-        // if (i == 46)
-        // {
-        //     std::cout << "hi" << std::endl;
-        // }
         regResult = nodewiseRegressionInit(
             y, response, covariates, intxs, gamma, beta,
             lambdas[i], asparse, regmean, maxit, tol, verbose);

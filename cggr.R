@@ -55,7 +55,7 @@ cggr <- function(responses, covariates, asparse,
   }
   if (parallel) {
     print("Running in parallel...")
-    reg_result <- parallel::mclapply(seq_len(p), nodewise)
+    reg_result <- parallel::mclapply(seq_len(p), nodewise, mc.cores = 5L)
   } else {
     reg_result <- lapply(seq_len(p), nodewise)
   }
@@ -89,14 +89,14 @@ cggr <- function(responses, covariates, asparse,
   }
 
   if (parallel) {
-    cv_results <- parallel::mclapply(seq_len(p), cv_node)
+    cv_results <- parallel::mclapply(seq_len(p), cv_node, mc.cores = 5L)
   } else {
     cv_results <- lapply(seq_len(p), cv_node)
   }
 
   for (node in seq_len(p)) {
-    cv_mse[node, ] <- cv_results[[node]]$cv_mse
-    cv_lambda_idx[node] <- which.min(cv_results[[node]]$cv_mse)
+    cv_mse[node, ] <- cv_results[[node]]
+    cv_lambda_idx[node] <- which.min(cv_results[[node]])
   }
 
   if (verbose) {

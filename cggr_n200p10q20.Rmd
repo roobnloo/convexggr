@@ -27,12 +27,12 @@ q <- 20
 dim <- (p - 1) * (q + 1)
 mG <- generate_mg(p, q)
 tB <- generate_tb(p, q, 0.02)
-s <- data_generate(n, p, q, tB, mG, reparam = F)
+s <- data_generate(n, p, q, tB, mG, reparam = FALSE)
 ```
 
 ## Run
 ```{r run, cache=T, cache.path="./cache/"}
-result <- cggr(s$X, s$U, asparse = 0.75)
+result <- cggr(s$X, s$U, asparse = 0.75, tol = 1e-5, parallel = TRUE)
 ```
 
 ### Compare gamma
@@ -42,13 +42,17 @@ print(gamma_viz_compare(result$ghat, mG))
 
 ### Compare beta {.tabset}
 ```{r, results="asis", echo = F, fig.dim=c(10, 5)}
-for (i in seq_len(6)) {
+for (i in seq(6)) {
   cat("\n#### comp", i - 1, "\n")
   cov_lbl <- paste0("component ", i - 1)
   cat("\n")
   print(beta_viz_compare(result$bhat[,,i], tB[,,i], cov_lbl, tileborder = T))
   cat("\n")
 }
+```
+
+```{r}
+print(beta_viz(result$bhat_asym[, , 19]))
 ```
 
 ## Report stats

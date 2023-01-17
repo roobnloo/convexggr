@@ -37,8 +37,5 @@ cv_cggr_node <- function(node, responses, covariates,
   }
 
   cv_mse <- apply(mses, 2, mean)
-  return(list(
-    cv_mse = cv_mse,
-    lambda_min = lambdas[which.min(cv_mse)]
-  ))
+  return(as.numeric(cv_mse))
 }

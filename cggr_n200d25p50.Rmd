@@ -1,5 +1,5 @@
 ---
-title: "CGGR run (200, 10, 20)"
+title: "CGGR run (200, 25, 50)"
 author: "Robin Liu"
 output: html_document
 knit: (function(input, ...) {
@@ -21,12 +21,12 @@ library(kableExtra)
 
 ## Generate data
 ```{r}
-d <- 25
-p <- 50
+p <- 25
+q <- 50
 n <- 200
-#tB <- generate_tb(d, p, ve = 0.012)
-load("data/tB.RData")
-mG <- matrix(runif(d * p, -0.25, 0.25), d, p) #generate_mg(d, p)
+#tB <- generate_tb(p, q, ve = 0.012)
+tB <- readRDS("data/tB.rds")
+mG <- matrix(runif(p * q, -0.25, 0.25), p, q) #generate_mg(p, q)
 
 generate <- function(n, d, p, tB, mG, seed) {
   set.seed(seed)
@@ -41,9 +41,9 @@ performance <- function(result, s_true) {
   stats <- list()
   stats$tpr <- sum(result$bhat != 0 & tB != 0) / sum(tB != 0)
   stats$fpr <- sum(result$bhat != 0 & tB == 0) / sum(tB == 0)
-  
+
   beta_err <- 0
-  for (i in 1:d) {
+  for (i in 1:p) {
     beta_err <- beta_err + sqrt(sum((tB[i,,] - result$bhat[i,,])^2))
   }
   stats$beta_err <- beta_err
@@ -71,10 +71,10 @@ performance <- function(result, s_true) {
 ## Run methods
 ```{r}
 failures <- 0
-trials <- 2
+trials <- 10
 s_list <- vector(mode = "list", length = trials)
 for (i in seq_len(trials)) {
-  s <- generate(n, d, p, tB, mG, i)
+  s <- generate(n, p, q, tB, mG, i)
   if (is.null(s)) {
     failures <- failures + 1
     next
@@ -88,10 +88,9 @@ gmmreg_result_mx <- matrix(nrow = trials, ncol = 5)
 cggr_result_mx <- matrix(nrow = trials, ncol = 5)
 for (i in seq_along(s_list)) {
   g_result <- gmmreg(s_list[[i]]$X, s_list[[i]]$U, 0.75)
-  gmmreg_result_mx[i,] <- unlist(performance(g_result, s_list[[i]]))
-  c_result <- cggr(s_list[[i]]$X, s_list[[i]]$U, 0.75)
-  cggr_result_mx[i,] <- unlist(performance(c_result, s_list[[i]]))
-  print(paste("Completed round", i))
+  gmmreg_result_mx[i, ] <- unlist(performance(g_result, s_list[[i]]))
+  c_result <- cggr(s_list[[i]]$X, s_list[[i]]$U, 0.75, tol = 1e-5)
+  cggr_result_mx[i, ] <- unlist(performance(c_result, s_list[[i]]))
 }
 ```
 

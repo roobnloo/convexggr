@@ -26,7 +26,7 @@ cv_cggr_node <- function(node, responses, covariates,
 
     nodereg <- nodewiseRegression(
       y_train, responses_train, covariates_train, asparse, regmean,
-      lambdas = lambdas, maxit = maxit, tol = tol, verbose = verbose)
+      lambdas = lambdas, maxit = maxit, tol = tol)
 
     resid_test <- y_test - covariates_test %*% nodereg["gamma"][[1]] -
                   intx_test %*% nodereg["beta"][[1]]

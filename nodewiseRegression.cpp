@@ -178,7 +178,7 @@ VectorXd applySparseGLUpdate(
 
 // TODO: is the variance correct?
 double estimateVariance(
-    const VectorXd &residual, const VectorXd &gamma, const VectorXd &beta)
+    const VectorXd &residual, const VectorXd &gamma, const MatrixXd &beta)
 {
     int numNonZero = (beta.array().abs() > 0).count();
     return residual.squaredNorm() / (residual.rows() - numNonZero);
@@ -217,8 +217,6 @@ NumericVector getLambda(
 }
 
 struct RegressionResult {
-    VectorXd gamma;
-    VectorXd beta;
     VectorXd resid;
     double varhat;
     double objval;
@@ -227,18 +225,18 @@ struct RegressionResult {
 RegressionResult nodewiseRegressionInit(
     const VectorXd &y, const MatrixXd &response, const MatrixXd &covariates,
     const std::vector<MatrixXd> &intxs,
-    const VectorXd &gammaInit, const VectorXd &betaInit,
+    VectorXd &gamma, MatrixXd &beta, // initial guess
     double lambda, double asparse, double regmean,
     int maxit, double tol, bool verbose)
 {
     int p = response.cols() + 1;
     int q = covariates.cols();
-    VectorXd gamma(gammaInit);
-    MatrixXd beta(betaInit);
+    // VectorXd gamma(gammaInit);
+    // MatrixXd beta(betaInit);
     beta.resize(p-1, q+1);
 
     VectorXd residual = y - covariates * gamma - response * beta.col(0);
-    for (int i = 0; i < intxs.size(); ++i)
+    for (int i = 0; i < (int) intxs.size(); ++i)
     {
         residual -= intxs[i] * beta.col(i + 1);
     }
@@ -248,8 +246,6 @@ RegressionResult nodewiseRegressionInit(
 
     for (int i = 0; i < maxit; ++i)
     {
-        if (verbose)
-            std::cout << "Iteration: " << i << std::endl;
         gamma = applyRidgeUpdate(gamma, residual, covariates, regmean);
 
         beta.col(0) = applyL1Update(
@@ -263,6 +259,15 @@ RegressionResult nodewiseRegressionInit(
         }
 
         objval[i + 1] = objective(residual, gamma, beta, regmean, lambda, asparse);
+        // if (verbose)
+        //     std::cout << "Iteration: " << i << ":: obj:" << objval[i+1] << std::endl;
+        
+        if (i > 4 && abs(objval[i + 1] - objval[i - 1]) < 1e-10
+            && abs(objval[i] - objval[i - 2]) < 1e-10)
+        {
+            std::cout << "potential oscillation" << std::endl;
+            stop("Potential oscillation!");
+        }
 
         if (abs(objval[i + 1] - objval[i]) < tol)
         {
@@ -270,19 +275,31 @@ RegressionResult nodewiseRegressionInit(
             break;
         }
     }
-    // std::cout << "Finished in " << objval.length() << " iterations." << std::endl;
+    if (verbose)
+        std::cout << "Finished in " << objval.length() << " iterations" << std::endl;
     if (objval.length() == maxit + 1)
     {
-        // std::cout << "Maximum iterations exceeded!" << std::endl;
+        std::cout << "Maximum iterations exceeded!" << std::endl;
         warning("Maximum iterations exceeded!");
     }
 
-    VectorXd betavec(Map<VectorXd>(beta.data(), beta.cols() * beta.rows()));
-    double varhat = estimateVariance(residual, gamma, betavec);
+    beta.resize((p-1)*(q+1), 1);
+    // VectorXd betavec(Map<VectorXd>(beta.data(), beta.cols() * beta.rows()));
+    double varhat = estimateVariance(residual, gamma, beta);
 
     return RegressionResult {
-        gamma, betavec, residual, varhat, objval[objval.size() - 1]
+        residual, varhat, objval[objval.size() - 1]
     };
+}
+
+void print(VectorXd v)
+{
+    std::cout << v << std::endl;
+}
+
+void print(MatrixXd m, int c)
+{
+    std::cout << m.col(c) << std::endl;
 }
 
 // [[Rcpp::export]]
@@ -327,24 +344,26 @@ List nodewiseRegression(
     VectorXd objectiveFull(nlambda);
 
     RegressionResult regResult;
-    MatrixXd beta(MatrixXd::Zero(p-1, q+1));
+    MatrixXd beta(MatrixXd::Zero((p-1)*(q+1), 1));
     VectorXd gamma(VectorXd::Zero(q));
     for (int i = 0; i < nlambda; ++i)
     {
         if (verbose)
             std::cout << "Regression for lambda index" << i << std::endl;
+        // if (i == 46)
+        // {
+        //     std::cout << "hi" << std::endl;
+        // }
         regResult = nodewiseRegressionInit(
             y, response, covariates, intxs, gamma, beta,
             lambdas[i], asparse, regmean, maxit, tol, verbose);
 
-        gammaFull.col(i) = regResult.gamma;
-        betaFull.col(i) = regResult.beta;
+        // Use gamma and beta as initializer for next lambda (warm-starts)
+        gammaFull.col(i) = gamma;
+        betaFull.col(i) = beta;
         residualFull.col(i) = regResult.resid;
         varhatFull(i) = regResult.varhat;
         objectiveFull(i) = regResult.objval;
-        // Use gamma and beta as initializer for next lambda (warm-starts)
-        gamma = regResult.gamma;
-        beta = regResult.beta;
     }
 
     return List::create(

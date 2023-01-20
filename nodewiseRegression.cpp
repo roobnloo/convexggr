@@ -6,6 +6,19 @@ using namespace Eigen;
 
 // [[Rcpp::depends(RcppEigen)]]
 
+// For easy debugging
+/*
+void print(VectorXd v)
+{
+    std::cout << v << std::endl;
+}
+
+void print(MatrixXd m, int c)
+{
+    std::cout << m.col(c) << std::endl;
+}
+*/
+
 double softThreshold(double x, double lambda)
 {
     double diff = std::abs(x) - lambda;
@@ -70,50 +83,9 @@ VectorXd applyL1Update(
     {
         auto xslice = X.col(i);
         residual += bnext(i) * xslice;
-        // VectorXd presid = residual + bnext(i) * xslice;
-        double dot = residual.dot(xslice);
-        double denom = xslice.squaredNorm() / n;
-        bnext(i) = softThreshold(dot / n, penalty) / denom;
+        double xscale = xslice.squaredNorm() / n;
+        bnext(i) = softThreshold(residual.dot(xslice) / n, penalty) / xscale;
         residual -= bnext(i) * xslice;
-    }
-
-    return bnext;
-}
-
-VectorXd applyL1UpdateComplete(
-    const VectorXd &b, VectorXd &residual, const MatrixXd &X, double penalty)
-{
-    int n = X.rows();
-    int p = b.rows();
-
-    if (residual.rows() != n || X.cols() != p)
-    {
-        stop("Dimension mismatch during L1 update step!");
-    }
-
-    VectorXd bprev(b);
-    VectorXd bnext(b);
-    int iter = 0;
-    while (iter < 1000)
-    {
-        for (int i = 0; i < b.rows(); ++i)
-        {
-            auto xslice = X.col(i);
-            residual += bnext(i) * xslice;
-            // VectorXd presid = residual + bnext(i) * xslice;
-            double dot = residual.dot(xslice);
-            double denom = xslice.squaredNorm() / n;
-            bnext(i) = softThreshold(dot / n, penalty) / denom;
-            residual -= bnext(i) * xslice;
-        }
-        VectorXd bdiff = (bnext - bprev);
-        double maxcoeff = bdiff.array().abs().maxCoeff();
-        if (maxcoeff < 1e-10)
-        {
-            break;
-        }
-        bprev = bnext;
-        ++iter;
     }
 
     return bnext;
@@ -129,9 +101,8 @@ double objective(
     double group_lasso_obj = 0;
     for (int i = 1; i < beta.cols(); ++i)
     {
-        VectorXd bcol(beta.col(i));
-        lasso_obj += bcol.lpNorm<1>();
-        group_lasso_obj += bcol.norm();
+        lasso_obj += beta.col(i).lpNorm<1>();
+        group_lasso_obj += beta.col(i).norm();
     }
     double result = quad_loss +
                     regmean * mean_obj +
@@ -293,8 +264,6 @@ RegressionResult nodewiseRegressionInit(
 {
     int p = response.cols() + 1;
     int q = covariates.cols();
-    // VectorXd gamma(gammaInit);
-    // MatrixXd beta(betaInit);
     beta.resize(p-1, q+1);
 
     VectorXd residual = y - covariates * gamma - response * beta.col(0);
@@ -327,7 +296,7 @@ RegressionResult nodewiseRegressionInit(
         if (i > 4 && std::abs(objval[i + 1] - objval[i - 1]) < 1e-20
             && std::abs(objval[i] - objval[i - 2]) < 1e-20)
         {
-            std::cout << "potential oscillation" << std::endl;
+            // std::cout << "potential oscillation" << std::endl;
             stop("Potential oscillation!");
         }
 
@@ -346,22 +315,11 @@ RegressionResult nodewiseRegressionInit(
     }
 
     beta.resize((p-1)*(q+1), 1);
-    // VectorXd betavec(Map<VectorXd>(beta.data(), beta.cols() * beta.rows()));
     double varhat = estimateVariance(residual, gamma, beta);
 
     return RegressionResult {
         residual, varhat, objval[objval.size() - 1]
     };
-}
-
-void print(VectorXd v)
-{
-    std::cout << v << std::endl;
-}
-
-void print(MatrixXd m, int c)
-{
-    std::cout << m.col(c) << std::endl;
 }
 
 // [[Rcpp::export]]
@@ -411,12 +369,12 @@ List nodewiseRegression(
     for (int i = 0; i < nlambda; ++i)
     {
         if (verbose)
-            std::cout << "Regression for lambda index" << i << std::endl;
+            std::cout << "Regression with lambda index " << i << std::endl;
         regResult = nodewiseRegressionInit(
             y, response, covariates, intxs, gamma, beta,
             lambdas[i], asparse, regmean, maxit, tol, verbose);
 
-        // Use gamma and beta as initializer for next lambda (warm-starts)
+        // Use gamma and beta as initializers for next lambda (warm-starts)
         gammaFull.col(i) = gamma;
         betaFull.col(i) = beta;
         residualFull.col(i) = regResult.resid;

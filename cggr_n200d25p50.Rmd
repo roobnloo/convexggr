@@ -63,15 +63,15 @@ performance <- function(result, s_true) {
     omega_err <- omega_err + sum((omega - omhat)^2) / n
   }
   stats$omega_err <- omega_err
-  
+
   return(stats)
 }
 ```
 
 ## Run methods
-```{r}
+```{r, message=FALSE}
 failures <- 0
-trials <- 10
+trials <- 50
 s_list <- vector(mode = "list", length = trials)
 for (i in seq_len(trials)) {
   s <- generate(n, p, q, tB, mG, i)
@@ -89,15 +89,20 @@ cggr_result_mx <- matrix(nrow = trials, ncol = 5)
 for (i in seq_along(s_list)) {
   g_result <- gmmreg(s_list[[i]]$X, s_list[[i]]$U, 0.75)
   gmmreg_result_mx[i, ] <- unlist(performance(g_result, s_list[[i]]))
-  c_result <- cggr(s_list[[i]]$X, s_list[[i]]$U, 0.75, tol = 1e-5)
+
+  c_result <- cggr(
+    s_list[[i]]$X, s_list[[i]]$U, 0.75, tol = 1e-6, parallel = TRUE)
   cggr_result_mx[i, ] <- unlist(performance(c_result, s_list[[i]]))
 }
 ```
 
 ```{r}
 avg_perf <- rbind(apply(gmmreg_result_mx, 2, mean),
-                  apply(cggr_result_mx, 2, mean))
+                  apply(gmmreg_result_mx, 2, sd),
+                  apply(cggr_result_mx, 2, mean),
+                  apply(cggr_result_mx, 2, sd))
 colnames(avg_perf) <- c("TPR", "FPR", "beta_err", "mean_err", "omega_err")
+rownames(avg_perf) <- c("gmmreg", "(sd)", "cggr", "(sd)")
 kable(avg_perf, digits = 3, padding = 10)  |>
   kable_styling()
 ```

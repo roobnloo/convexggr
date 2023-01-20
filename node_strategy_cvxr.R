@@ -8,7 +8,6 @@ node_strategy_cvxr <- function(y, responses, covariates,
 
   q <- ncol(covariates)
   p <- ncol(responses) + 1
-  y <- scale(y, scale = FALSE)
 
   gamma <- initgamma
   beta <- initbeta

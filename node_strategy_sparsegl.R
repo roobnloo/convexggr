@@ -9,7 +9,6 @@ node_strategy_sparsegl <- function(y, responses, covariates,
   q <- ncol(covariates)
   n <- nrow(responses)
 
-  y <- scale(y, scale = FALSE)
   W <- cbind(responses, intxmx(responses, covariates))
 
   stopifnot(nrow(covariates) == n,

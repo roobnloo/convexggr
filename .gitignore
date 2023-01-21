@@ -3,7 +3,6 @@
 .RData
 .Ruserdata
 sandbox/
-data/
 cache/
 GMMReg/
 GMMReg.zip

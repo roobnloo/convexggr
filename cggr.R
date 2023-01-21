@@ -54,7 +54,7 @@ cggr <- function(responses, covariates, asparse,
     tictoc::tic()
   }
   if (parallel) {
-    reg_result <- parallel::mclapply(seq_len(p), nodewise, mc.cores = 5L)
+    reg_result <- parallel::mclapply(seq_len(p), nodewise)
   } else {
     reg_result <- lapply(seq_len(p), nodewise)
   }

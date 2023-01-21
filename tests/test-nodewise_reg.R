@@ -2,8 +2,8 @@ library(Rcpp)
 knitr::opts_chunk$set(echo = TRUE)
 source("data_generation.R")
 source("cggr.R")
-source("node_strategy_sparsegl.R")
-source("node_strategy_cvxr.R")
+# source("node_strategy_sparsegl.R")
+# source("node_strategy_cvxr.R")
 source("test_utils.R")
 # sourceCpp("nodewiseRegression.cpp")
 
@@ -17,16 +17,16 @@ tb <- generate_tb(p, q, 0.02)
 # tb <- readRDS("data/tB.rds")
 s <- data_generate(n, p, q, tb, mg, reparam = FALSE)
 
-nodewiseRegression(
-  s$X[, 1], s$X[, -1], s$U, 0.20, 0.01,
-  maxit = 1000, tol = 1e-6, verbose = TRUE)
-print("goodbye")
+# nodewiseRegression(
+#   s$X[, 1], s$X[, -1], s$U, 0.20, 0.01,
+#   maxit = 1000, tol = 1e-6, verbose = TRUE)
+# print("goodbye")
 
-# tictoc::tic()
-# result_cpp <- cggr(
-#   s$X, s$U, 0.20, 0.01, tol = 1e-5, verbose = TRUE)
-# tictoc::toc()
-# result_cpp$lambda[cbind(result_cpp$cv_lambda, 1:p)]
+tictoc::tic()
+result_cpp <- cggr(
+  s$X, s$U, 0.20, 0.01, tol = 1e-5, verbose = TRUE, parallel = TRUE)
+tictoc::toc()
+result_cpp$lambda[cbind(result_cpp$cv_lambda, 1:p)]
 
 # tictoc::tic()
 # result_sgl <- cggr(

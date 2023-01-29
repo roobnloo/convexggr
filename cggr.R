@@ -11,8 +11,8 @@ sourceCpp("nodewiseRegression.cpp")
 #' @param asparse SGL mixture penalty
 cggr <- function(responses, covariates, asparse,
                  regmean = 0.01, nlambda = 100, lambdafactor = 1e-4,
-                 maxit = 1000, tol = 1e-8, nfolds = 5,
-                 verbose = FALSE, parallel = FALSE) {
+                 maxit = 3e6, tol = 1e-8, nfolds = 5,
+                 verbose = FALSE, parallel = TRUE) {
 
   stopifnot(is.matrix(responses), is.matrix(covariates),
             nrow(responses) == nrow(covariates),
@@ -54,7 +54,7 @@ cggr <- function(responses, covariates, asparse,
     tictoc::tic()
   }
   if (parallel) {
-    reg_result <- parallel::mclapply(seq_len(p), nodewise)
+    reg_result <- parallel::mclapply(seq_len(p), nodewise, mc.cores = 13L)
   } else {
     reg_result <- lapply(seq_len(p), nodewise)
   }
@@ -88,7 +88,7 @@ cggr <- function(responses, covariates, asparse,
   }
 
   if (parallel) {
-    cv_results <- parallel::mclapply(seq_len(p), cv_node, mc.cores = 5L)
+    cv_results <- parallel::mclapply(seq_len(p), cv_node, mc.cores = 13L)
   } else {
     cv_results <- lapply(seq_len(p), cv_node)
   }
@@ -117,7 +117,8 @@ cggr <- function(responses, covariates, asparse,
   bhat_mx <- matrix(beta[bhat_select], nrow = bveclength, ncol = p)
   bhat_tens <-  array(0, dim = c(p, p, q + 1))
   for (i in seq_len(p)) {
-    bhat_tens[i, -i, ] <- -bhat_mx[, i] / varhat[i]
+    # bhat_tens[i, -i, ] <- -bhat_mx[, i] / varhat[i]
+    bhat_tens[i, -i, ] <- bhat_mx[, i]
   }
 
   bhat_symm <- abind(
@@ -126,15 +127,18 @@ cggr <- function(responses, covariates, asparse,
   # Returns the estimated precision matrix of the ith observation
   precision <- function(i) {
     Theta <- apply(bhat_symm, c(1, 2), \(b) b %*% c(1, covariates[i, ]))
-    diag(Theta) <- 1/varhat
+    diag(Theta) <- -1
+    # diag(Theta) <- 1/varhat
     # omega <- -1 * diag(1/varhat) %*% Theta
-    return(Theta)
+    omega <- -1 * Theta # assumes (!) variance is 1.
+    return(omega)
   }
 
   # Returns the estimated mean vector of the ith observation
   mean <- function(i) {
     prec <- precision(i)
-    mu <- solve(prec, diag(1 / varhat) %*% ghat_mx %*% covariates[i, ])
+    # mu <- solve(prec, diag(1 / varhat) %*% ghat_mx %*% covariates[i, ])
+    mu <- solve(prec, ghat_mx %*% covariates[i, ])
     return(mu)
   }
 

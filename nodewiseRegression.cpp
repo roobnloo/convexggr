@@ -213,8 +213,10 @@ VectorXd applySparseGLUpdate(
 double estimateVariance(
     const VectorXd &residual, const VectorXd &gamma, const MatrixXd &beta)
 {
-    int numNonZero = (beta.array().abs() > 0).count();
-    return residual.squaredNorm() / (residual.rows() - numNonZero);
+    int numNonZero = (beta.array().abs() > 0).count();//  + (gamma.array().abs() > 0).count() / 2;
+    double varhat = residual.squaredNorm() / (residual.rows() - 1 - numNonZero);
+    // std::cout << "varhat: " << varhat << std::endl;
+    return varhat;
 }
 
 NumericVector getLambda(

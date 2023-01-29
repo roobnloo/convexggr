@@ -4,7 +4,7 @@ source("data_generation.R")
 source("gmmreg.R")
 source("cggr.R")
 source("test_utils.R")
-library(kableExtra)
+# library(kableExtra)
 library(abind)
 ```
 
@@ -13,15 +13,22 @@ set.seed(6)
 d <- 25
 p <- 50
 n <- 200
-load("data/tB.RData")
-tB <- tB
+tB <- readRDS("data/tB.rds")
 # tB <- generate_tb(d, p)
-mG <- matrix(runif(d * p, -0.25, 0.25), d, p) #generate_mg(d, p)
+# mG <- matrix(runif(d * p, -0.25, 0.25), d, p) #generate_mg(d, p)
+mG <- generate_mg(d, p)
 
 generate <- function(n, d, p, tb, mg, seed) {
   set.seed(seed)
   s <- data_generate(n, d, p, tb, mg)
   return(s)
+}
+generate_datasets <- function(tbpath, mgpath, n, seed) {
+    set.seed(seed)
+    tb <- readRDS(tbpath)
+    mg <- readRDS(mgpath)
+    s <- data_generate(n, tb, mg)
+    return(s)
 }
 ```
 
@@ -32,17 +39,17 @@ performance <- function(result, tb, s) {
   stats$tpr <- sum(result$bhat != 0 & tb != 0) / sum(tb != 0)
   stats$fpr <- sum(result$bhat != 0 & tb == 0) / sum(tb == 0)
 
-#   beta_err <- 0
-#   for (i in 1:d) {
-#     beta_err <- beta_err + sqrt(sum((tb[i, , ] - result$bhat[i, , ])^2))
-#   }
-#   stats$beta_err <- beta_err
+  beta_err <- 0
+  for (i in 1:d) {
+    beta_err <- beta_err + sqrt(sum((tb[i, , ] - result$bhat[i, , ])^2))
+  }
+  stats$beta_err <- beta_err / n
 
   mean_err <- 0
   for (i in 1:n) {
     mean_err <- mean_err + sum((s$mumx[i, ] -  result$mean(i))^2) / n
   }
-  stats$mean_err <- mean_err
+  stats$mean_err <- mean_err / n
 
 
   omega_err <- 0
@@ -70,14 +77,16 @@ for (i in seq_along(s_list)) {
 
 
 ```{r}
-# gmmreg_results <- vector("list", length = trials)
-cggr_results <- vector("list", length = trials)
+gmmreg_results <- vector("list", length = trials)
+# cggr_results <- vector("list", length = trials)
 for (i in seq_along(s_list)) {
   s <- s_list[[i]]
-#   g_result <- gmmreg(s$X, s$U, 0.70)
-  c_result <- cggr(s$X, s$U, 0.70, verbose = TRUE)
+  g_result <- gmmreg(s$X, s$U, 0.70, verbose = TRUE)
+  # c_result <- cggr(s$X, s$U, 0.70, verbose = TRUE)
+  tictoc::tic()
   gmmreg_results[[i]] <- g_result
-  cggr_results[[i]] <- c_result
+  tictoc::toc()
+  # cggr_results[[i]] <- c_result
   print(paste("Finished trial", i))
 }
 ```
@@ -141,8 +150,10 @@ Reduce(cbind, perf)
 ```
 
 ```{r}
-cr <- cggr(s$X, s$U, asparse = 0.2)
-performance(cr, tB, s)
+for (i in seq_len(6)) {
+    print(beta_viz_compare(result$bhat[, , i], tb[, , i], i))
+}
+
 ```
 
 # Matlab

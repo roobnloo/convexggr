@@ -55,7 +55,7 @@ performance <- function(result, s_true) {
   stats$mean_err <- mean_err
 
   omega_err <- 0
-  iU <- cbind(0, s_true$U)
+  iU <- cbind(1, s_true$U)
   for (i in 1:n) {
     omega <- apply(tB, c(1, 2), \(b) b %*% iU[i, ])
     omhat <- result$precision(i)
@@ -71,7 +71,7 @@ performance <- function(result, s_true) {
 ## Run methods
 ```{r, message=FALSE}
 failures <- 0
-trials <- 50
+trials <- 10
 s_list <- vector(mode = "list", length = trials)
 for (i in seq_len(trials)) {
   s <- generate(n, p, q, tB, mG, i)
@@ -83,15 +83,18 @@ for (i in seq_len(trials)) {
 }
 ```
 
-```{r run, cache=T, cache.path="./cache/"}
+```{r run, cache=FALSE, cache.path="./cache/"}
 gmmreg_result_mx <- matrix(nrow = trials, ncol = 5)
 cggr_result_mx <- matrix(nrow = trials, ncol = 5)
 for (i in seq_along(s_list)) {
-  g_result <- gmmreg(s_list[[i]]$X, s_list[[i]]$U, 0.75)
+  g_result <- gmmreg(
+    s_list[[i]]$X, s_list[[i]]$U, 0.75,
+    verbose = FALSE, parallel = TRUE)
   gmmreg_result_mx[i, ] <- unlist(performance(g_result, s_list[[i]]))
 
   c_result <- cggr(
-    s_list[[i]]$X, s_list[[i]]$U, 0.75, tol = 1e-6, parallel = TRUE)
+    s_list[[i]]$X, s_list[[i]]$U, 0.75, tol = 1e-6,
+    verbose = FALSE, parallel = TRUE)
   cggr_result_mx[i, ] <- unlist(performance(c_result, s_list[[i]]))
 }
 ```

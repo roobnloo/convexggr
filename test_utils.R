@@ -2,6 +2,40 @@ library(tibble)
 library(ggplot2)
 library(patchwork)
 
+performance <- function(result, s) {
+  stopifnot(all(dim(result$bhat) == dim(s$tB)))
+  p <- dim(s$tB)[1]
+  n <- length(s$pd_check)
+  stats <- list()
+  stats$tpr <- sum(result$bhat != 0 & s$tB != 0) / sum(s$tB != 0)
+  stats$fpr <- sum(result$bhat != 0 & s$tB == 0) / sum(s$tB == 0)
+
+  beta_err <- 0
+  for (i in 1:p) {
+    beta_err <- beta_err + sqrt(sum((s$tB[i, , ] - result$bhat[i, , ])^2))
+  }
+  stats$beta_err <- beta_err
+
+  mean_err <- 0
+  for (i in 1:n) {
+    mean_err <- mean_err + sum((s$mumx[i, ] -  result$mean(i))^2) / n
+  }
+  stats$mean_err <- mean_err / n
+
+
+  omega_err <- 0
+  iu <- cbind(1, s$U)
+  for (i in 1:n) {
+    omega <- -apply(s$tB, c(1, 2), \(b) b %*% iu[i, ])
+    omhat <- result$precision(i)
+    diag(omhat) <- 0
+    omega_err <- omega_err + sum((omega - omhat)^2) / n
+  }
+  stats$omega_err <- omega_err
+
+  return(stats)
+}
+
 gamma_viz <- function(gamma_mx, title = "", limits = NULL) {
   d <- nrow(gamma_mx)
   p <- ncol(gamma_mx)
@@ -38,7 +72,7 @@ gamma_viz_list <- function(gamma_list) {
       plots[[i]] <- plots[[i]] + guides(fill = "none")
     }
   }
-  Reduce(`+`, plots)
+  Reduce(`+`, plots) + plot_layout(ncol = 1)
 }
 
 beta_viz <- function(beta_mx, title = "", limits = NULL, guides = T,

@@ -219,7 +219,27 @@ double estimateVariance(
     return varhat;
 }
 
-NumericVector getLambda(
+// TODO: This path of regmeans ignores the "beta" part of the residual.
+NumericVector getRegMeanPath(int nregmean, const MatrixXd &covariates)
+{
+    if (nregmean <= 0)
+    {
+        stop("Number of mean penalty terms must be strictly positive!");
+    }
+    JacobiSVD<MatrixXd> svd(covariates);
+    double largestSV = svd.singularValues()[0];
+
+    NumericVector loglinInterp(nregmean);
+    double delta = log(largestSV) / (nregmean - 1);
+    for (int i = 0; i < (nregmean); ++i)
+    {
+        loglinInterp[i] = exp(i * delta);
+    }
+    return loglinInterp;
+}
+
+// TODO: This path of lambdas ignores the "gamma" part of the residual.
+NumericVector getLambdaPath(
     NumericVector inlambda, int nlambda, double lambdaFactor,
     const VectorXd &y, const std::vector<MatrixXd> &intxs)
 {
@@ -327,7 +347,8 @@ RegressionResult nodewiseRegressionInit(
 // [[Rcpp::export]]
 List nodewiseRegression(
     VectorXd y, MatrixXd response, MatrixXd covariates,
-    double asparse, double regmean,
+    double asparse, 
+    NumericVector regmean = NumericVector::create(), int nregmean = 10,
     NumericVector lambdas = NumericVector::create(),
     int nlambda = 100, double lambdaFactor = 1e-4,
     int maxit = 1000, double tol = 1e-8, bool verbose = false)
@@ -339,9 +360,9 @@ List nodewiseRegression(
     {
         stop("Responses and covariates must have the same number of observations!");
     }
-    if (asparse < 0 || asparse > 1 || regmean < 0)
+    if (asparse < 0 || asparse > 1)
     {
-        stop("Penalty terms are out of range!");
+        stop("Sparsity mixture parameter must be between zero and one!");
     }
     if (maxit <= 0 || tol <= 0)
     {
@@ -356,39 +377,75 @@ List nodewiseRegression(
         intxs[i] = intx;
     }
 
-    lambdas = getLambda(lambdas, nlambda, lambdaFactor, y, intxs);
+    regmean = getRegMeanPath(nregmean, covariates);
+    lambdas = getLambdaPath(lambdas, nlambda, lambdaFactor, y, intxs);
     nlambda = lambdas.size(); // a bit of a hack for user-provided lambdas
 
-    MatrixXd gammaFull(q, nlambda);
-    MatrixXd betaFull((p-1)*(q+1), nlambda);
-    VectorXd varhatFull(nlambda);
-    MatrixXd residualFull(y.rows(), nlambda);
-    VectorXd objectiveFull(nlambda);
+    MatrixXd gammaFull(q, nlambda * nregmean);
+    MatrixXd betaFull((p-1)*(q+1), nlambda * nregmean);
+    MatrixXd varhatFull(nlambda, nregmean);
+    MatrixXd residualFull(y.rows(), nlambda * nregmean);
+    MatrixXd objectiveFull(nlambda, nregmean);
 
-    RegressionResult regResult;
-    MatrixXd beta(MatrixXd::Zero((p-1)*(q+1), 1));
-    VectorXd gamma(VectorXd::Zero(q));
-    for (int i = 0; i < nlambda; ++i)
+    for (int regmeanIdx = 0; regmeanIdx < nregmean; ++regmeanIdx)
     {
-        if (verbose)
-            std::cout << "Regression with lambda index " << i << std::endl;
-        regResult = nodewiseRegressionInit(
-            y, response, covariates, intxs, gamma, beta,
-            lambdas[i], asparse, regmean, maxit, tol, verbose);
+        RegressionResult regResult;
+        MatrixXd beta(MatrixXd::Zero((p-1)*(q+1), 1));
+        VectorXd gamma(VectorXd::Zero(q));
+        for (int lambdaIdx = 0; lambdaIdx < nlambda; ++lambdaIdx)
+        {
+            if (verbose)
+                std::cout << "Regression with lambda index " << lambdaIdx << std::endl;
+            regResult = nodewiseRegressionInit(
+                y, response, covariates, intxs, gamma, beta,
+                lambdas[lambdaIdx], asparse, regmean[regmeanIdx],
+                maxit, tol, verbose);
 
-        // Use gamma and beta as initializers for next lambda (warm-starts)
-        gammaFull.col(i) = gamma;
-        betaFull.col(i) = beta;
-        residualFull.col(i) = regResult.resid;
-        varhatFull(i) = regResult.varhat;
-        objectiveFull(i) = regResult.objval;
+            // Use gamma and beta as initializers for next lambda (warm-starts)
+            int colIdx = nlambda * regmeanIdx + lambdaIdx;
+            gammaFull.col(colIdx) = gamma;
+            betaFull.col(colIdx) = beta;
+            residualFull.col(colIdx) = regResult.resid;
+            varhatFull(lambdaIdx, regmeanIdx) = regResult.varhat;
+            objectiveFull(lambdaIdx, regmeanIdx) = regResult.objval;
+        }
     }
 
+    NumericVector gamma(wrap(gammaFull));
+    gamma.attr("dim") = NumericVector::create(q, nlambda, nregmean);
+    NumericVector beta(wrap(betaFull));
+    beta.attr("dim") = NumericVector::create((p-1)*(q+1), nlambda, nregmean);
+    NumericVector resid(wrap(residualFull));
+    resid.attr("dim") = NumericVector::create(y.rows(), nlambda, nregmean);
+
     return List::create(
-        Named("beta") = betaFull,
-        Named("gamma") = gammaFull,
+        Named("beta") = beta,
+        Named("gamma") = gamma,
         Named("varhat") = varhatFull,
         Named("objval") = objectiveFull,
-        Named("resid") = residualFull,
-        Named("lambdas") = lambdas);
+        Named("resid") = resid,
+        Named("lambdas") = lambdas,
+        Named("regmeans") = regmean);
 }
+
+// // [[Rcpp::export]]
+// NumericVector getArray(int x, int y, int z)
+// {
+//     NumericVector result(x * y * z);
+//     int val = 1;
+//     for (int i = 0; i < z; ++i)
+//     {
+//         MatrixXd slice = MatrixXd::Zero(x, y);
+//         for (int j = 0; j < y; ++j)
+//         {
+//             for (int k = 0; k < x; ++k)
+//             {
+//                 slice(k, j) = val++;
+//             }
+//         }
+//         SEXP s = wrap(slice);
+//         result[seq(i * x * y, (i + 1) * x * y - 1)] = NumericVector(s);
+//     }
+//     result.attr("dim") = NumericVector::create(x, y, z);
+//     return result;
+// }

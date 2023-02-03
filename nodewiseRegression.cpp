@@ -230,10 +230,17 @@ NumericVector getRegMeanPath(int nregmean, const MatrixXd &covariates)
     double largestSV = svd.singularValues()[0];
 
     NumericVector loglinInterp(nregmean);
-    double delta = log(largestSV) / (nregmean - 1);
-    for (int i = 0; i < (nregmean); ++i)
+    // double delta = log(pow(largestSV, 1.5)) / (nregmean - 1);
+    // for (int i = 0; i < (nregmean); ++i)
+    // {
+    //     loglinInterp[i] = exp(i * delta);
+    // }
+    double offset = 1;
+    double targetMax = pow(largestSV, 1.5);
+    double delta = (targetMax - offset) / (nregmean - 1);
+    for (int i = 0; i < nregmean; ++i)
     {
-        loglinInterp[i] = exp(i * delta);
+        loglinInterp[i] = i * delta + offset;
     }
     return loglinInterp;
 }
@@ -312,7 +319,7 @@ RegressionResult nodewiseRegressionInit(
         }
 
         objval[i + 1] = objective(residual, gamma, beta, regmean, lambda, asparse);
-        // if (verbose)
+        // if (verbose && i % 1000 == 0)
         //     std::cout << "Iteration: " << i << ":: obj:" << objval[i+1] << std::endl;
         
         if (i > 4 && std::abs(objval[i + 1] - objval[i - 1]) < 1e-20
@@ -328,8 +335,8 @@ RegressionResult nodewiseRegressionInit(
             break;
         }
     }
-    if (verbose)
-        std::cout << "Finished in " << objval.length() << " iterations" << std::endl;
+    // if (verbose)
+    //     std::cout << "Finished in " << objval.length() << " iterations" << std::endl;
     if (objval.length() == maxit + 1)
     {
         std::cout << "Maximum iterations exceeded!" << std::endl;
@@ -346,12 +353,11 @@ RegressionResult nodewiseRegressionInit(
 
 // [[Rcpp::export]]
 List nodewiseRegression(
-    VectorXd y, MatrixXd response, MatrixXd covariates,
-    double asparse, 
-    NumericVector regmean = NumericVector::create(), int nregmean = 10,
-    NumericVector lambdas = NumericVector::create(),
+    VectorXd y, MatrixXd response, MatrixXd covariates, double asparse, 
+    NumericVector regmeanPath = NumericVector::create(), int nregmean = 10,
+    NumericVector lambdaPath = NumericVector::create(),
     int nlambda = 100, double lambdaFactor = 1e-4,
-    int maxit = 1000, double tol = 1e-8, bool verbose = false)
+    int maxit = 1000, double tol = 1e-8, bool verbose = true)
 {
     int p = response.cols() + 1;
     int q = covariates.cols();
@@ -377,9 +383,12 @@ List nodewiseRegression(
         intxs[i] = intx;
     }
 
-    regmean = getRegMeanPath(nregmean, covariates);
-    lambdas = getLambdaPath(lambdas, nlambda, lambdaFactor, y, intxs);
-    nlambda = lambdas.size(); // a bit of a hack for user-provided lambdas
+    if (regmeanPath.size() == 0) // TODO: sort by increasing if nonempty
+        regmeanPath = getRegMeanPath(nregmean, covariates);
+    nregmean = regmeanPath.size();
+
+    lambdaPath = getLambdaPath(lambdaPath, nlambda, lambdaFactor, y, intxs);
+    nlambda = lambdaPath.size(); // a bit of a hack for user-provided lambdas
 
     MatrixXd gammaFull(q, nlambda * nregmean);
     MatrixXd betaFull((p-1)*(q+1), nlambda * nregmean);
@@ -394,11 +403,11 @@ List nodewiseRegression(
         VectorXd gamma(VectorXd::Zero(q));
         for (int lambdaIdx = 0; lambdaIdx < nlambda; ++lambdaIdx)
         {
-            if (verbose)
-                std::cout << "Regression with lambda index " << lambdaIdx << std::endl;
+            // if (verbose)
+            //     std::cout << "Regression with lambda index " << lambdaIdx << std::endl;
             regResult = nodewiseRegressionInit(
                 y, response, covariates, intxs, gamma, beta,
-                lambdas[lambdaIdx], asparse, regmean[regmeanIdx],
+                lambdaPath[lambdaIdx], asparse, regmeanPath[regmeanIdx],
                 maxit, tol, verbose);
 
             // Use gamma and beta as initializers for next lambda (warm-starts)
@@ -424,28 +433,6 @@ List nodewiseRegression(
         Named("varhat") = varhatFull,
         Named("objval") = objectiveFull,
         Named("resid") = resid,
-        Named("lambdas") = lambdas,
-        Named("regmeans") = regmean);
+        Named("lambdas") = lambdaPath,
+        Named("regmeans") = regmeanPath);
 }
-
-// // [[Rcpp::export]]
-// NumericVector getArray(int x, int y, int z)
-// {
-//     NumericVector result(x * y * z);
-//     int val = 1;
-//     for (int i = 0; i < z; ++i)
-//     {
-//         MatrixXd slice = MatrixXd::Zero(x, y);
-//         for (int j = 0; j < y; ++j)
-//         {
-//             for (int k = 0; k < x; ++k)
-//             {
-//                 slice(k, j) = val++;
-//             }
-//         }
-//         SEXP s = wrap(slice);
-//         result[seq(i * x * y, (i + 1) * x * y - 1)] = NumericVector(s);
-//     }
-//     result.attr("dim") = NumericVector::create(x, y, z);
-//     return result;
-// }

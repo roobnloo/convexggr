@@ -9,24 +9,23 @@ source("test_utils.R")
 
 
 set.seed(104)
+p <- 25
+q <- 50
+tb <- readRDS("data/tB.rds")
+mg <- readRDS("data/mg_p25q50sparseFALSE.rds")
 n <- 200
-p <- 10
-q <- 20
-mg <- generate_mg(p, q)
-tb <- generate_tb(p, q, 0.02)
-# tb <- readRDS("data/tB.rds")
-s <- data_generate(n, p, q, tb, mg, reparam = FALSE)
+s <- data_generate(n, tb, mg, reparam = TRUE)
 
-# nodewiseRegression(
-#   s$X[, 1], s$X[, -1], s$U, 0.20, 0.01,
-#   maxit = 1000, tol = 1e-6, verbose = TRUE)
-# print("goodbye")
+result <- nodewiseRegression(
+  s$X[, 1], s$X[, -1], s$U, 0.75,
+  maxit = 3000, tol = 1e-6)
 
-tictoc::tic()
-result_cpp <- cggr(
-  s$X, s$U, 0.20, 0.01, tol = 1e-5, verbose = TRUE, parallel = TRUE)
-tictoc::toc()
-result_cpp$lambda[cbind(result_cpp$cv_lambda, 1:p)]
+# tictoc::tic()
+# result_cpp <- cggr(
+#   s$X, s$U, 0.75,
+#   maxit = 3000, tol = 1e-5, verbose = TRUE, parallel = TRUE)
+# tictoc::toc()
+# result_cpp$lambda[cbind(result_cpp$cv_lambda, 1:p)]
 
 # tictoc::tic()
 # result_sgl <- cggr(

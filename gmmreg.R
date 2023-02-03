@@ -86,14 +86,14 @@ gmmreg <- function(X, U, asparse, nlambda = 100, verbose = FALSE, parallel = TRU
   }
   for (node in seq_len(p)) {
     varhat[node] <- result[[node]]$varhat
-    bhat_tens[node, -node,] <- -result[[node]]$beta / varhat[node]
+    bhat_tens[node, -node,] <- result[[node]]$beta / varhat[node]
   }
 
   bhat_symm <- abind(apply(bhat_tens, 3, symmetrize, simplify = F), along = 3)
 
   # Returns the estimated precision matrix of the ith observation
   precision <- function(i) {
-    omega <- apply(bhat_symm, c(1, 2), \(b) b %*% c(1, U[i, ]))
+    omega <- -apply(bhat_symm, c(1, 2), \(b) b %*% c(1, U[i, ]))
     diag(omega) <- 1 / varhat
     return(omega)
   }

@@ -48,8 +48,8 @@ VectorXd softThreshold(const VectorXd &x, double lambda)
     return thresh;
 }
 
-VectorXd applyRidgeUpdate(
-    const VectorXd &v, VectorXd &residual, const MatrixXd &U, double regmean)
+void applyRidgeUpdate(
+    VectorXd &v, VectorXd &residual, const MatrixXd &U, const double &regmean)
 {
     if (U.cols() != v.rows())
     {
@@ -57,14 +57,13 @@ VectorXd applyRidgeUpdate(
     }
 
     int p = U.rows();
-    auto regdiag = VectorXd::Constant(p, regmean).asDiagonal();
     residual += U * v;
-    MatrixXd UtUreg = U.transpose() * U;
+    auto regdiag = VectorXd::Constant(p, 2 * regmean).asDiagonal();
+    MatrixXd UtUreg = U.transpose() * U / residual.rows();
     UtUreg += regdiag;
-    VectorXd v_update = UtUreg.llt().solve(U.transpose() * residual);
-    residual -= U * v_update;
-
-    return v_update;
+    v = UtUreg.llt().solve(U.transpose() * residual) / residual.rows();
+    residual -= U * v;
+    return;
 }
 
 VectorXd applyL1Update(
@@ -87,7 +86,6 @@ VectorXd applyL1Update(
         bnext(i) = softThreshold(residual.dot(xslice) / n, penalty) / xscale;
         residual -= bnext(i) * xslice;
     }
-
     return bnext;
 }
 
@@ -306,10 +304,8 @@ RegressionResult nodewiseRegressionInit(
 
     for (int i = 0; i < maxit; ++i)
     {
-        gamma = applyRidgeUpdate(gamma, residual, covariates, regmean);
-
-        beta.col(0) = applyL1Update(
-            beta.col(0), residual, response, lambda * asparse);
+        applyRidgeUpdate(gamma, residual, covariates, regmean);
+        beta.col(0) = applyL1Update(beta.col(0), residual, response, lambda * asparse);
 
         for (int j = 0; j < q; ++j)
         {

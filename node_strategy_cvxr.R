@@ -15,15 +15,14 @@ node_strategy_cvxr <- function(y, responses, covariates,
 
   obj <- loss + cggr_penalty(gamma, beta, regmean, lambda, asparse, p, q)
   prob <- Problem(Minimize(obj))
-  result <- CVXR::solve(
-    prob, reltol = tol, abstol = tol, num_iter = maxit,
-    verbose = TRUE)
+  result <- CVXR::solve(prob, num_iter = maxit)
   return(result)
 }
 
-compute_loss <- function(y, responses, covariates, gamma_j, beta_j) {
-  r_j <- compute_residual(y, responses, covariates, gamma_j, beta_j)
-  return(sum_squares(r_j) / (2 * nrow(responses)))
+compute_loss <- function(y, responses, covariates, gamma, beta) {
+  W <- cbind(responses, intxmx(responses, covariates))
+  r <- y - covariates %*% gamma - W %*% beta
+  return(sum_squares(r) / (2 * nrow(responses)))
 }
 
 cggr_penalty <- function(gamma_j, beta_j, lambda_g, lambda_b, alpha, p, q) {
@@ -31,11 +30,8 @@ cggr_penalty <- function(gamma_j, beta_j, lambda_g, lambda_b, alpha, p, q) {
     Map(\(x) p_norm(beta_j[x * (p - 1) + seq_len(p - 1)], p = 2), seq_len(q))
   group_lasso_term <- Reduce(`+`, group_lasso_term)
 
-  # gl <- sum(sapply(seq_len(q),
-  #                  \(x) p_norm(beta_j[x * (p-1) + seq_len(p-1)], p = 2)
-  #          ))
-
-  lambda_g * sum_squares(gamma_j) +
+  return(
+    lambda_g * sum_squares(gamma_j) +
     alpha * lambda_b * p_norm(beta_j, p = 1) +
-    (1 - alpha) * lambda_b * group_lasso_term
+    (1 - alpha) * lambda_b * group_lasso_term)
 }

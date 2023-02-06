@@ -1,8 +1,8 @@
-#' @return n x p(d-1) matrix representing interactions btw responses and covs
+#' @return n x q(p-1) matrix representing interactions btw responses and covs
 intxmx <- function(responses, covariates) {
-  d <- ncol(responses) + 1
-  p <- ncol(covariates)
-  idx_mat <- as.matrix(expand.grid(seq_len(d - 1), seq_len(p)))
+  p <- ncol(responses) + 1
+  q <- ncol(covariates)
+  idx_mat <- as.matrix(expand.grid(seq_len(p - 1), seq_len(q)))
 
   foo <- function(i) {
     responses[, idx_mat[i, 1]] * covariates[, idx_mat[i, 2]]
@@ -33,7 +33,6 @@ compute_residual <- function(y, responses, covariates, gamma_j, beta_j) {
   # x_gamma_j <- covariates %*% gamma_j # X gamma_j
   # y_b_j0 <- responses %*% beta_j[seq_len(p - 1)] # Y_-j b_j^0
   # wjbetaj0 <- wj %*% beta_j[-seq_len(p - 1)] # W_-j beta_j,-0
-  r_beta <- cbind(responses, intxmx(responses, covariates))
-
-  return(y - covariates %*% gamma_j - r_beta %*% beta_j)
+  W <- cbind(responses, intxmx(responses, covariates))
+  return(y - covariates %*% gamma_j - W %*% beta_j)
 }

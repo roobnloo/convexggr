@@ -1,58 +1,43 @@
 library(Rcpp)
 knitr::opts_chunk$set(echo = TRUE)
 source("data_generation.R")
-source("cggr.R")
-# source("node_strategy_sparsegl.R")
-# source("node_strategy_cvxr.R")
+source("node_strategy_sparsegl.R")
+source("node_strategy_cvxr.R")
 source("test_utils.R")
-# sourceCpp("nodewiseRegression.cpp")
+sourceCpp("nodewiseRegression.cpp")
 
 
 set.seed(104)
 p <- 25
 q <- 50
-tb <- readRDS("data/tB.rds")
+tb <- readRDS("data/tb_p25q50.rds")
 mg <- readRDS("data/mg_p25q50sparseFALSE.rds")
 n <- 200
 s <- data_generate(n, tb, mg, reparam = TRUE)
 
-result <- nodewiseRegression(
+lambda <- 0.1
+regmean <- 3.5
+
+result_cpp <- nodewiseRegression(
   s$X[, 1], s$X[, -1], s$U, 0.75,
-  maxit = 3000, tol = 1e-6)
+  regmeanPath = regmean, lambdaPath = lambda,
+  maxit = 3000, tol = 1e-8)
 
-# tictoc::tic()
-# result_cpp <- cggr(
-#   s$X, s$U, 0.75,
-#   maxit = 3000, tol = 1e-5, verbose = TRUE, parallel = TRUE)
-# tictoc::toc()
-# result_cpp$lambda[cbind(result_cpp$cv_lambda, 1:p)]
+result_sgl <- node_strategy_sparsegl(
+  s$X[, 1], s$X[, -1], s$U,
+  lambda, 0.75, regmean, tol = 1e-8)
+result_sgl$objval[length(result_sgl$objval)]
 
-# tictoc::tic()
-# result_sgl <- cggr(
-#   s$X, s$U, 0.20, node_strategy_sparsegl, 0.01, maxit = 1000, tol = 1e-5,
-#   verbose = TRUE)
-# tictoc::toc()
-# # print(result_cpp$objval)
-# result_sgl$lambda[cbind(result_sgl$cv_lambda, 1:p)]
-# print(gamma_viz_compare(result_sgl$ghat, mG))
-# print(beta_viz_compare(result_sgl$bhat_asym[, , 1], tb[, , 1],
-#       "population", tileborder = TRUE))
+gamma_cvxr <- Variable(q)
+beta_cvxr <- Variable((q + 1) * (p - 1))
+result_cvxr <- node_strategy_cvxr(
+  s$X[, 1], s$X[, -1], s$U, lambda, 0.75,
+  regmean, beta_cvxr, gamma_cvxr, tol = 1e-8)
+values <- c(
+  result_cvxr$value,
+  result_cpp$objval,
+  result_sgl$objval[length(result_sgl$objval)]
+)
 
-# tictoc::tic()
-# result_sgl <- node_strategy_sparsegl(
-#   s$X[, 1], s$X[, -1], s$U,
-#   0.03, 0.75, 0.01, initbeta, initgamma, tol = 1e-8)
-# result_sgl$objval[length(result_sgl$objval)]
-# tictoc::toc()
-
-# gamma_cvxr <- Variable(q)
-# beta_cvxr <- Variable((q + 1) * (p - 1))
-# result_cvxr <- node_strategy_cvxr(
-#   s$X[, 1], s$X[, -1], s$U,
-#   result_cpp$lambdas[9], 0.75, 0.01, beta_cvxr, gamma_cvxr, maxit = 5000, tol = 1e-8)
-# values <- c(
-#   result_cvxr$value,
-#   result_cpp$objval[length(result_cpp$objval)],
-#   result_sgl$objval[length(result_sgl$objval)]
-# )
-# values
+print(values)
+print(diff(values))

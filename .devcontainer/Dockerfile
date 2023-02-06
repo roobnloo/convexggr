@@ -19,6 +19,6 @@ RUN pip install radian && \
     install2.r languageserver httpgd && \
     installGithub.r ManuelHentschel/vscDebugger
 
-RUN install2.r abind RcppEigen sparsegl patchwork tictoc
+RUN install2.r abind RcppEigen sparsegl patchwork tictoc CVXR
 
 USER root

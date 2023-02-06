@@ -53,8 +53,8 @@ node_strategy_sparsegl <- function(y, responses, covariates,
     # ridge step
     rgamma <- r + covariates %*% gamma
     gamma <- solve(
-      t(covariates) %*% covariates + diag(regmean, q, q),
-      t(covariates) %*% rgamma)
+      t(covariates) %*% covariates / n + diag(regmean * 2, q, q),
+      t(covariates) %*% rgamma) / n
     r <- rgamma - covariates %*% gamma
   }
 

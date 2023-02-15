@@ -49,7 +49,7 @@ VectorXd softThreshold(const VectorXd &x, double lambda)
 }
 
 void applyRidgeUpdate(
-    VectorXd &v, VectorXd &residual, const MatrixXd &U, const double &regmean)
+    VectorXd &v, VectorXd &residual, const MatrixXd &U, double regmean)
 {
     if (U.cols() != v.rows())
     {
@@ -66,8 +66,8 @@ void applyRidgeUpdate(
     return;
 }
 
-VectorXd applyL1Update(
-    const VectorXd &b, VectorXd &residual, const MatrixXd &X, double penalty)
+void applyL1Update(
+    Ref<VectorXd> b, VectorXd &residual, const MatrixXd &X, double penalty)
 {
     int n = X.rows();
     int p = b.rows();
@@ -77,16 +77,15 @@ VectorXd applyL1Update(
         stop("Dimension mismatch during L1 update step!");
     }
 
-    VectorXd bnext(b);
     for (int i = 0; i < b.rows(); ++i)
     {
         auto xslice = X.col(i);
-        residual += bnext(i) * xslice;
+        residual += b(i) * xslice;
         double xscale = xslice.squaredNorm() / n;
-        bnext(i) = softThreshold(residual.dot(xslice) / n, penalty) / xscale;
-        residual -= bnext(i) * xslice;
+        b(i) = softThreshold(residual.dot(xslice) / n, penalty) / xscale;
+        residual -= b(i) * xslice;
     }
-    return bnext;
+    return;
 }
 
 double objective(
@@ -118,6 +117,7 @@ double objective_sgl(
            (1 - asparse) * lambda * v.norm();
 }
 
+// TODO: Is there a way to avoid returning a copy in this function?
 VectorXd sglUpdateStep(
     const VectorXd &center, const VectorXd &grad,
     double step, double lambda, double asparse)
@@ -137,8 +137,8 @@ VectorXd sglUpdateStep(
     return normterm * thresh;
 }
 
-VectorXd applySparseGLUpdate(
-    const VectorXd &beta_grp, VectorXd &residual, const MatrixXd &intx,
+void applySparseGLUpdate(
+    Ref<VectorXd> beta_grp, VectorXd &residual, const MatrixXd &intx,
     double lambda, double asparse, int maxit, double tol)
 {
     int n = intx.rows();
@@ -154,18 +154,18 @@ VectorXd applySparseGLUpdate(
     // If this subgradient condition holds, the entire group should be zero
     if (threshold.norm() <= (1 - asparse) * lambda)
     {
-        return VectorXd::Zero(beta_grp.rows());
+        beta_grp = VectorXd::Zero(beta_grp.rows());
+        return;
     }
 
     double step_size = 1;
-    VectorXd beta_update(beta_grp);
     VectorXd center_new(beta_grp);
     double obj = INFINITY;
     double objnew;
     for (int i = 0; i < maxit; ++i)
     {
         objnew = objective_sgl(
-            residual - intx * beta_update, beta_update, lambda, asparse);
+            residual - intx * beta_grp, beta_grp, lambda, asparse);
         if (std::abs(objnew - obj) < tol)
         {
             break;
@@ -178,7 +178,7 @@ VectorXd applySparseGLUpdate(
         }
         obj = objnew;
         VectorXd center_old = center_new;
-        VectorXd grp_fit = intx * beta_update;
+        VectorXd grp_fit = intx * beta_grp;
         VectorXd grad = -1 * intx.transpose() * (residual - grp_fit) / n;
 
         // Optimize the step size
@@ -188,8 +188,8 @@ VectorXd applySparseGLUpdate(
         while (true)
         {
             center_new = sglUpdateStep(
-                beta_update, grad, step_size, lambda, asparse);
-            VectorXd centerdiff = center_new - beta_update;
+                beta_grp, grad, step_size, lambda, asparse);
+            VectorXd centerdiff = center_new - beta_grp;
             rhs = quad_loss_old + grad.dot(centerdiff) +
                   centerdiff.squaredNorm() / (2 * step_size);
             lhs = (residual - intx * center_new).squaredNorm() / (2 * n);
@@ -199,12 +199,12 @@ VectorXd applySparseGLUpdate(
         }
 
         // Nesterov momentum step
-        beta_update = center_old +
+        beta_grp = center_old +
                       ((i + 1.0) / (i + 4)) * (center_new - center_old);
     }
 
-    residual -= intx * beta_update;
-    return beta_update;
+    residual -= intx * beta_grp;
+    return;
 }
 
 // TODO: is the variance correct?
@@ -228,17 +228,11 @@ NumericVector getRegMeanPath(int nregmean, const MatrixXd &covariates)
     double largestSV = svd.singularValues()[0];
 
     NumericVector loglinInterp(nregmean);
-    // double delta = log(pow(largestSV, 1.5)) / (nregmean - 1);
-    // for (int i = 0; i < (nregmean); ++i)
-    // {
-    //     loglinInterp[i] = exp(i * delta);
-    // }
-    double offset = 1;
-    double targetMax = pow(largestSV, 1.5);
-    double delta = (targetMax - offset) / (nregmean - 1);
+    double regmeanFactor = 1e-3;
+    double delta = log(regmeanFactor) / (nregmean - 1);
     for (int i = 0; i < nregmean; ++i)
     {
-        loglinInterp[i] = i * delta + offset;
+        loglinInterp[i] = largestSV * exp(i * delta);
     }
     return loglinInterp;
 }
@@ -305,17 +299,17 @@ RegressionResult nodewiseRegressionInit(
     for (int i = 0; i < maxit; ++i)
     {
         applyRidgeUpdate(gamma, residual, covariates, regmean);
-        beta.col(0) = applyL1Update(beta.col(0), residual, response, lambda * asparse);
+        applyL1Update(beta.col(0), residual, response, lambda * asparse);
 
         for (int j = 0; j < q; ++j)
         {
-            beta.col(j + 1) = applySparseGLUpdate(
+            applySparseGLUpdate(
                 beta.col(j + 1), residual, intxs[j],
                 lambda, asparse, maxit, tol);
         }
 
         objval[i + 1] = objective(residual, gamma, beta, regmean, lambda, asparse);
-        // if (verbose && i % 1000 == 0)
+        // if (verbose)
         //     std::cout << "Iteration: " << i << ":: obj:" << objval[i+1] << std::endl;
         
         if (i > 4 && std::abs(objval[i + 1] - objval[i - 1]) < 1e-20
@@ -400,7 +394,7 @@ List nodewiseRegression(
         for (int lambdaIdx = 0; lambdaIdx < nlambda; ++lambdaIdx)
         {
             // if (verbose)
-            //     std::cout << "Regression with lambda index " << lambdaIdx << std::endl;
+                // std::cout << "Regression with lambda index " << lambdaIdx << std::endl;
             regResult = nodewiseRegressionInit(
                 y, response, covariates, intxs, gamma, beta,
                 lambdaPath[lambdaIdx], asparse, regmeanPath[regmeanIdx],

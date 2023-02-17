@@ -39,12 +39,12 @@ tictoc::tic()
 for (i in seq_along(s_list)) {
   g_result <- gmmreg(
     s_list[[i]]$X, s_list[[i]]$U, 0.75,
-    verbose = FALSE, parallel = TRUE)
+    verbose = TRUE, parallel = TRUE)
   gmmreg_result_mx[i, ] <- unlist(performance(g_result, s_list[[i]]))
 
   c_result <- cggr(
     s_list[[i]]$X, s_list[[i]]$U, 0.75,
-    nregmean = 10,
+    nregmean = 20,
     verbose = TRUE, parallel = TRUE)
   cggr_result_mx[i, ] <- unlist(performance(c_result, s_list[[i]]))
   cat("Finished round", i, "\n")
@@ -57,9 +57,9 @@ results <- list(
     g_result = g_result,
     cggr = cggr_result_mx,
     c_result = c_result)
-path <- paste0("output/p", p, "q", q, "n", n, ".rds")
-saveRDS(results, path)
-cat("Saved results to", path, "\n")
+# path <- paste0("output/p", p, "q", q, "n", n, ".rds")
+# saveRDS(results, path)
+# cat("Saved results to", path, "\n")
 
 avg_perf <- rbind(apply(gmmreg_result_mx, 2, mean),
                   apply(gmmreg_result_mx, 2, sd),
@@ -67,8 +67,6 @@ avg_perf <- rbind(apply(gmmreg_result_mx, 2, mean),
                   apply(cggr_result_mx, 2, sd))
 colnames(avg_perf) <- c("TPR", "FPR", "beta_err", "mean_err", "omega_err")
 rownames(avg_perf) <- c("gmmreg", "(sd)", "cggr", "(sd)")
-
-dev.off()
 
 for (i in seq_len(6)) {
   cov_lbl <- as.character(i - 1)
@@ -79,3 +77,5 @@ for (i in seq_len(6)) {
 }
 
 print(gamma_viz_list(list(g = g_result$ghat, c = c_result$ghat, mg)))
+
+# dev.off()

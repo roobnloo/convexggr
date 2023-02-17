@@ -2,37 +2,38 @@ library(abind)
 library(sparsegl)
 source("utils.R")
 
-#' @param X n x d matrix of responses
-#' @param U n x p matrix of covariates
-gmmreg <- function(X, U, asparse, nlambda = 100, verbose = FALSE, parallel = TRUE) {
-  stopifnot(is.matrix(X), is.matrix(U),
-            nrow(X) == nrow(U),
-            asparse > 0, asparse <= 1)
-  p <- ncol(X)
-  q <- ncol(U)
-
+#' @param responses n x p matrix of responses
+#' @param covariates n x q matrix of covariates
+gmmreg <- function(
+  responses, covariates, asparse = seq(0.1, 1, by = 0.1), nlambda = 100,
+  nfolds = 5, verbose = FALSE, parallel = TRUE) {
+  stopifnot(is.matrix(responses), is.matrix(covariates),
+            nrow(responses) == nrow(covariates),
+            all(asparse >= 0), all(asparse <= 1))
+  p <- ncol(responses)
+  q <- ncol(covariates)
+  n <- nrow(responses)
+  nasparse <- length(asparse)
 
   # Estimate mean matrix
   ghat_mx <- matrix(nrow = p, ncol = q)
 
   nodewise_gamma <- function(node) {
-    if (verbose)
-      print("Begin step 1 for node", node, quote = FALSE)
-    result <- cv.sparsegl(U, X[, node], seq_len(q),
-                                asparse = 1, nfolds = 5,
+    result <- cv.sparsegl(covariates, responses[, node], seq_len(q),
+                                asparse = 1, nfolds = nfolds,
                                 intercept = FALSE, standardize = FALSE)
     # print(paste("lambda min for node", node, "is", result$lambda.min))
     if (verbose)
-      print("Finished step 1 for node", node, quote = FALSE)
+      cat("Finished step 1 for node", node, fill = TRUE)
     # ignore the intercept fitted below with -1
     gamma <- as.numeric(coef(result, s = "lambda.min"))[-1]
     return(gamma)
   }
 
   if (parallel) {
-    step1_result <- parallel::mclapply(seq_len(p), nodewise_gamma, mc.cores = 13L);
+    step1_result <- parallel::mclapply(seq_len(p), nodewise_gamma, mc.cores = 20L)
   } else {
-    step1_result <- lapply(seq_len(p), nodewise_gamma);
+    step1_result <- lapply(seq_len(p), nodewise_gamma)
   }
 
   for (node in seq_len(p)) {
@@ -46,61 +47,75 @@ gmmreg <- function(X, U, asparse, nlambda = 100, verbose = FALSE, parallel = TRU
   # Estimated variances
   varhat <- vector(length = p)
 
-  Z <- X - U %*% t(ghat_mx)
+  Z <- responses - covariates %*% t(ghat_mx)
 
-  nodewise_beta <- function(node)
-  {
+  nodewise_beta <- function(node) {
     y <- Z[, node]
-    mx <- cbind(Z[, -node], intxmx(Z[, -node], U))
+    mx <- cbind(Z[, -node], intxmx(Z[, -node], covariates))
 
     # There are (q + 1) groups and the size of each group is p-1
     grp_idx <- rep(1:(q + 1), each = p - 1)
 
-    if (verbose)
-      print("Begin regression for node", node, quote = FALSE)
-    cv_result <- cv.sparsegl(mx, y, grp_idx,
-      asparse = asparse,
-      nlambda = nlambda,
-      pf_group = c(0, rep(1, q)),
-      nfolds = 5,
-      intercept = FALSE,
-      standardize = FALSE
-    )
-    if (verbose)
-      print("Finished regression for node", node, quote = FALSE)
+    # if (verbose)
+    #   cat("Begin regression for node", node, fill = TRUE)
 
-    # ignore the intercept fitted below with -1
-    beta <- as.numeric(coef(cv_result, s = "lambda.min"))[-1]
-    rss <- sum((y - predict(cv_result, mx, s = "lambda.min"))^2)
-    num_nz <- sum(abs(beta) > 0)
+    foldid <- sample(cut(seq_len(n), nfolds, labels = FALSE))
+    mses <- matrix(nrow = nlambda, ncol = nasparse)
+    betas <- array(dim = c((p - 1) * (q + 1), nlambda, nasparse))
+    varhat <- matrix(nrow = nlambda, ncol = nasparse)
+
+    for (i in seq_len(nasparse)) {
+      cv_result <- cv.sparsegl(
+        mx, y, grp_idx,
+        asparse = asparse[i],
+        nlambda = nlambda,
+        pf_group = c(0, rep(1, q)),
+        foldid = foldid,
+        intercept = FALSE,
+        standardize = FALSE
+      )
+      mses[, i] <- cv_result$cvm
+      # -1 ignores the intercept
+      betas[, , i] <- as.numeric(coef(cv_result, s = cv_result$lambda)[-1, ])
+      num_nonzero <- apply(abs(betas[, , i]), 2, \(b) sum(b > 0))
+      rss <- apply((y - predict(cv_result, mx, s = cv_result$lambda))^2, 2, sum)
+      varhat[, i] <- rss / (n - num_nonzero)
+    }
+    cvind <- arrayInd(which.min(mses), dim(mses))
+    if (verbose) {
+      cat("Finished regression for node", node, fill = TRUE)
+      cat("CV indices:", sprintf("(%d, %d)", cvind[1], cvind[2]), fill = TRUE)
+    }
+
     return(list(
-      beta = beta,
-      varhat = rss  / (nrow(X) - num_nz)
+      beta = betas[, cvind[1], cvind[2]],
+      varhat = varhat[cvind[1], cvind[2]]
     ))
   }
 
   if (parallel) {
-    result <- parallel::mclapply(seq_len(p), nodewise_beta, mc.cores = 13L)
+    result <- parallel::mclapply(seq_len(p), nodewise_beta, mc.cores = 20L)
   } else {
     result <- lapply(seq_len(p), nodewise_beta)
   }
   for (node in seq_len(p)) {
     varhat[node] <- result[[node]]$varhat
-    bhat_tens[node, -node,] <- result[[node]]$beta / varhat[node]
+    bhat_tens[node, -node, ] <- result[[node]]$beta / varhat[node]
   }
 
-  bhat_symm <- abind(apply(bhat_tens, 3, symmetrize, simplify = F), along = 3)
+  bhat_symm <- abind(
+    apply(bhat_tens, 3, symmetrize, simplify = FALSE), along = 3)
 
   # Returns the estimated precision matrix of the ith observation
   precision <- function(i) {
-    omega <- -apply(bhat_symm, c(1, 2), \(b) b %*% c(1, U[i, ]))
+    omega <- -apply(bhat_symm, c(1, 2), \(b) b %*% c(1, covariates[i, ]))
     diag(omega) <- 1 / varhat
     return(omega)
   }
 
   # Returns the estimated mean vector of the ith observation
   mean <- function(i) {
-    mu <- ghat_mx %*% U[i, ]
+    mu <- ghat_mx %*% covariates[i, ]
     return(mu)
   }
 

@@ -34,8 +34,8 @@ cggr <- function(responses, covariates, asparse,
   objval <- array(dim = c(nlambda, nregmean, p))
 
   nodewise <- function(node) {
-    if (verbose)
-      print(paste("Starting initial run for node", node))
+    # if (verbose)
+    #   print(paste("Starting initial run for node", node))
     nodereg <- nodewiseRegression(
       responses[, node], responses[, -node], covariates, asparse,
       nregmean = nregmean, nlambda = nlambda, lambdaFactor = lambdafactor,
@@ -54,11 +54,11 @@ cggr <- function(responses, covariates, asparse,
   }
 
   if (verbose) {
-    print("Begin initial run...")
+    cat("Begin initial run...\n")
     tictoc::tic()
   }
   if (parallel) {
-    reg_result <- parallel::mclapply(seq_len(p), nodewise, mc.cores = 20L)
+    reg_result <- parallel::mclapply(seq_len(p), nodewise, mc.cores = 10L)
   } else {
     reg_result <- lapply(seq_len(p), nodewise)
   }
@@ -95,10 +95,14 @@ cggr <- function(responses, covariates, asparse,
   }
 
   if (parallel) {
-    cv_results <- parallel::mclapply(seq_len(p), cv_node, mc.cores = 20L)
+    cv_results <- parallel::mclapply(seq_len(p), cv_node, mc.cores = 10L)
   } else {
     cv_results <- lapply(seq_len(p), cv_node)
   }
+
+  # if (any(sapply(cv_results, inherits, what = "try-error"))) {
+  #   browser()
+  # }
 
   for (node in seq_len(p)) {
     cv_mse[node, , ] <- cv_results[[node]]
@@ -127,7 +131,7 @@ cggr <- function(responses, covariates, asparse,
   bhat_mx <- matrix(beta[bhat_select], nrow = bveclength, ncol = p)
   bhat_tens <-  array(0, dim = c(p, p, q + 1))
   for (i in seq_len(p)) {
-    bhat_tens[i, -i, ] <- bhat_mx[, i]
+    bhat_tens[i, -i, ] <- bhat_mx[, i] / varhat[i]
   }
 
   bhat_symm <- abind(
@@ -136,9 +140,8 @@ cggr <- function(responses, covariates, asparse,
   # Returns the estimated precision matrix of the ith observation
   precision <- function(i) {
     Theta <- apply(bhat_symm, c(1, 2), \(b) b %*% c(1, covariates[i, ]))
-    diag(Theta) <- -1
-    omega <- -1 * diag(1/varhat) %*% Theta
-    # omega <- -1 * Theta # assumes (!) variance is 1.
+    omega <- -1 * Theta
+    diag(omega) <- 1 / varhat
     return(omega)
   }
 
@@ -146,7 +149,6 @@ cggr <- function(responses, covariates, asparse,
   mean <- function(i) {
     prec <- precision(i)
     mu <- solve(prec, diag(1 / varhat) %*% ghat_mx %*% covariates[i, ])
-    # mu <- solve(prec, ghat_mx %*% covariates[i, ])
     return(mu)
   }
 

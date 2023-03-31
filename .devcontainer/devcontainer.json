@@ -1,18 +1,18 @@
 {
-	"name": "RStudio",
+	"name": "ignatius",
 
 	"dockerComposeFile": "docker-compose.yml",
 	"service": "rstudio",
 	
 	// rstudio port forwarding
-	"forwardPorts": [8787],
-	"portsAttributes": {
-		"8787": {
-			"label": "RStudio",
-			"requireLocalPort": true,
-			"onAutoForward": "ignore"
-		}
-	},
+	// "forwardPorts": [8787],
+	// "portsAttributes": {
+	// 	"8787": {
+	// 		"label": "RStudio",
+	// 		"requireLocalPort": true,
+	// 		"onAutoForward": "ignore"
+	// 	}
+	// },
 
 	"workspaceFolder": "/home/rstudio/work",
 	"remoteUser": "rstudio",

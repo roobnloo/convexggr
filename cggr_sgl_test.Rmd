@@ -6,44 +6,37 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-source("generate_data.R")
-source("cggr_sgl.R")
+library(tidyr)
+library(xtable)
+library(tables)
 source("test_utils.R")
-library(rTensor)
 ```
 
 ```{r}
-set.seed(103)
-d <- 25 
-p <- 50
-n <- 200
-s <- generate_data(n, d, p, ve = 0.01, reparametrize = T)
+result <- readRDS("output/p50q50n200reparamTRUEtrials50.rds")
 ```
 
 ```{r}
-sgl_result <- cggr_sgl(s$responses, s$covariates, 0.75, reparametrize = F)
-```
-
-### Compare component matrices
-```{r compare components}
-compute_idx <- c(1, 1 + s$cov_nz_idx)
-for (i in seq_along(s$b_mxs)) {
-  cov_lbl <- paste0("component ", compute_idx[i] - 1)
-  print(beta_viz_compare(sgl_result$beta_mxs[[compute_idx[i]]],
-                         s$b_mxs[[i]], cov_lbl))
-}
+result
 ```
 
 ```{r}
-print(paste("TPR:", true_pos_rate(sgl_result$beta_mxs, s$b_mxs, s$cov_nz_idx)))
-print(paste("FPR:", round(1-true_neg_rate(sgl_result$beta_mxs, s$b_mxs, s$cov_nz_idx), 3)))
+avg_perf <- rbind(apply(result$gmmreg, 2, mean),
+                  apply(result$gmmreg, 2, sd),
+                  apply(result$cggr, 2, mean),
+                  apply(result$cggr, 2, sd))
+colnames(avg_perf) <- c("TPR", "FPR", "beta_err", "mean_err", "omega_err")
+rownames(avg_perf) <- c("gmmreg", "(sd)", "cggr", "(sd)")
 ```
 
+```{R}
+varhatdf <- data.frame(
+  cggr = as.numeric(1/result$cggr_varhat),
+  gmmreg = as.numeric(1/result$gmmreg_varhat))
 
-
-```{r beta_plots}
-for (b_mx in sgl_result$beta_mx) {
-  print(beta_viz(b_mx))
-}
+varhatdf |>
+  pivot_longer(c("cggr", "gmmreg"), names_to = "method", values_to = "varhat") |>
+  ggplot(mapping = aes(x = varhat, y = method, fill = method)) +
+  geom_boxplot() +
+  geom_jitter(color="black", size=0.4, alpha=0.9)
 ```

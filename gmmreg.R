@@ -31,7 +31,7 @@ gmmreg <- function(
   }
 
   if (parallel) {
-    step1_result <- parallel::mclapply(seq_len(p), nodewise_gamma, mc.cores = 20L)
+    step1_result <- parallel::mclapply(seq_len(p), nodewise_gamma, mc.cores = 10L)
   } else {
     step1_result <- lapply(seq_len(p), nodewise_gamma)
   }
@@ -39,6 +39,9 @@ gmmreg <- function(
   for (node in seq_len(p)) {
     ghat_mx[node, ] <- step1_result[[node]]
   }
+
+  rm(step1_result)
+  gc()
 
   # Initialize covariate array
   # Includes the population matrix, hence +1
@@ -77,9 +80,12 @@ gmmreg <- function(
       mses[, i] <- cv_result$cvm
       # -1 ignores the intercept
       betas[, , i] <- as.numeric(coef(cv_result, s = cv_result$lambda)[-1, ])
-      num_nonzero <- apply(abs(betas[, , i]), 2, \(b) sum(b > 0))
+      nnzero_pop <- apply(betas[seq_len(p - 1), , i], 2, \(b) sum(abs(b) > 0))
+      # Adjusts for double-counting if population group is active
+      nnzero_pop[nnzero_pop == 0] <- 1
+      nnzero_pop <- nnzero_pop - 1
       rss <- apply((y - predict(cv_result, mx, s = cv_result$lambda))^2, 2, sum)
-      varhat[, i] <- rss / (n - num_nonzero)
+      varhat[, i] <- rss / (n - (cv_result$active_grps + nnzero_pop))
     }
     cvind <- arrayInd(which.min(mses), dim(mses))
     if (verbose) {
@@ -87,14 +93,20 @@ gmmreg <- function(
       cat("CV indices:", sprintf("(%d, %d)", cvind[1], cvind[2]), fill = TRUE)
     }
 
+    if (length(varhat[cvind[1], cvind[2]]) == 0) {
+      cat("CV indices:", sprintf("(%d, %d)", cvind[1], cvind[2]), fill = TRUE)
+      print(varhat)
+    }
+
     return(list(
       beta = betas[, cvind[1], cvind[2]],
-      varhat = varhat[cvind[1], cvind[2]]
+      varhat = varhat[cvind[1], cvind[2]],
+      cvind = cvind
     ))
   }
 
   if (parallel) {
-    result <- parallel::mclapply(seq_len(p), nodewise_beta, mc.cores = 20L)
+    result <- parallel::mclapply(seq_len(p), nodewise_beta, mc.cores = 10L)
   } else {
     result <- lapply(seq_len(p), nodewise_beta)
   }

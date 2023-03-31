@@ -6,6 +6,7 @@ sandbox/
 cache/
 GMMReg/
 data/
+output/
 GMMReg.zip
 InputStreamByteWrapper.class
 MatlabServer.m

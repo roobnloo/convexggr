@@ -11,7 +11,8 @@ ENV PATH /opt/conda/bin:$PATH
 RUN curl --silent -L --fail \
         https://github.com/quarto-dev/quarto-cli/releases/download/v1.2.269/quarto-1.2.269-linux-amd64.deb > /tmp/quarto.deb && \
     apt update && \
-    apt install -y --no-install-recommends /tmp/quarto.deb
+    apt install -y --no-install-recommends /tmp/quarto.deb && \
+    apt install -y --no-install-recommends tmux
 
 USER rstudio
 
@@ -19,6 +20,7 @@ RUN pip install radian && \
     install2.r languageserver httpgd && \
     installGithub.r ManuelHentschel/vscDebugger
 
-RUN install2.r abind RcppEigen sparsegl patchwork tictoc CVXR
+
+RUN install2.r abind RcppEigen sparsegl patchwork tictoc CVXR tables
 
 USER root

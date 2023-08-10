@@ -16,21 +16,21 @@ source("data_generation.R")
 source("gmmreg.R")
 source("cggr.R")
 source("test_utils.R")
-library(kableExtra)
+# library(kableExtra)
 ```
 
 ## Generate data
 ```{r}
 p <- 25
-q <- 50
+q <- 100
 n <- 200
 #tB <- generate_tb(p, q, ve = 0.012)
-tB <- readRDS("data/tB.rds")
-mG <- matrix(runif(p * q, -0.25, 0.25), p, q) #generate_mg(p, q)
+tB <- readRDS("data/tb_p25q100.rds")
+mG <- readRDS("data/mg_p25q100sparseTRUEsg500.rds")
 
-generate <- function(n, d, p, tB, mG, seed) {
+generate <- function(n, tB, mG, seed) {
   set.seed(seed)
-  s <- data_generate(n, d, p, tB, mG)
+  s <- data_generate(n, tB, mG, reparam = TRUE)
   return(s)
 }
 ```
@@ -48,6 +48,8 @@ performance <- function(result, s_true) {
   }
   stats$beta_err <- beta_err
 
+  stats$mtpr <- sum(result$ghat != 0 & mG != 0) / sum(mG != 0)
+  stats$mfpr <- sum(result$ghat != 0 & mG == 0) / sum(mG == 0)
   mean_err <- 0
   for (i in 1:n) {
     mean_err <- mean_err + sum((s_true$mumx[i, ] -  result$mean(i))^2) / n
@@ -71,10 +73,10 @@ performance <- function(result, s_true) {
 ## Run methods
 ```{r, message=FALSE}
 failures <- 0
-trials <- 10
+trials <- 1
 s_list <- vector(mode = "list", length = trials)
 for (i in seq_len(trials)) {
-  s <- generate(n, p, q, tB, mG, i)
+  s <- generate(n, tB, mG, i+100)
   if (is.null(s)) {
     failures <- failures + 1
     next
@@ -84,17 +86,17 @@ for (i in seq_len(trials)) {
 ```
 
 ```{r run, cache=FALSE, cache.path="./cache/"}
-gmmreg_result_mx <- matrix(nrow = trials, ncol = 5)
-cggr_result_mx <- matrix(nrow = trials, ncol = 5)
+gmmreg_result_mx <- matrix(nrow = trials, ncol = 7)
+cggr_result_mx <- matrix(nrow = trials, ncol = 7)
 for (i in seq_along(s_list)) {
   g_result <- gmmreg(
     s_list[[i]]$X, s_list[[i]]$U, 0.75,
-    verbose = FALSE, parallel = TRUE)
+    verbose = TRUE, parallel = TRUE)
   gmmreg_result_mx[i, ] <- unlist(performance(g_result, s_list[[i]]))
 
   c_result <- cggr(
-    s_list[[i]]$X, s_list[[i]]$U, 0.75, tol = 1e-6,
-    verbose = FALSE, parallel = TRUE)
+    s_list[[i]]$X, s_list[[i]]$U, 0.75, nregmean = 20, tol = 1e-6,
+    verbose = TRUE, parallel = TRUE)
   cggr_result_mx[i, ] <- unlist(performance(c_result, s_list[[i]]))
 }
 ```
@@ -104,10 +106,13 @@ avg_perf <- rbind(apply(gmmreg_result_mx, 2, mean),
                   apply(gmmreg_result_mx, 2, sd),
                   apply(cggr_result_mx, 2, mean),
                   apply(cggr_result_mx, 2, sd))
-colnames(avg_perf) <- c("TPR", "FPR", "beta_err", "mean_err", "omega_err")
+colnames(avg_perf) <- c(
+  "betaTPR", "betaFPR", "beta_err",
+  "meanTPR", "meanFPR", "mean_err", "omega_err")
 rownames(avg_perf) <- c("gmmreg", "(sd)", "cggr", "(sd)")
-kable(avg_perf, digits = 3, padding = 10)  |>
-  kable_styling()
+avg_perf
+# kable(avg_perf, digits = 3, padding = 10)  |>
+#   kable_styling()
 ```
 
 ### Compare gamma

@@ -1,11 +1,11 @@
 library(MASS)
 library(igraph)
 
-generate_parameters <- function(p, q, seed, sparse_mean = TRUE) {
+generate_parameters <- function(p, q, seed, sg = 125, sparse_mean = TRUE) {
     set.seed(seed)
     tb <- generate_tb(p, q)
     if (sparse_mean) {
-        mg <- generate_mg(p, q)
+        mg <- generate_mg(p, q, sg)
     } else {
         mg <- matrix(runif(p * q, -0.25, 0.25), p, q)
     }

@@ -13,11 +13,13 @@ source("test_utils.R")
 ```
 
 ```{r}
-result <- readRDS("output/p50q50n200reparamTRUEtrials50.rds")
+result <- readRDS("output/p50q50n200reparamTRUEsparse500trials20.rds")
 ```
 
 ```{r}
-result
+s <- result$run$s
+c_result <- result$run$c_result
+g_result <- result$run$g_result
 ```
 
 ```{r}
@@ -25,18 +27,33 @@ avg_perf <- rbind(apply(result$gmmreg, 2, mean),
                   apply(result$gmmreg, 2, sd),
                   apply(result$cggr, 2, mean),
                   apply(result$cggr, 2, sd))
-colnames(avg_perf) <- c("TPR", "FPR", "beta_err", "mean_err", "omega_err")
+colnames(avg_perf) <- c(
+  "betaTPR", "betaFPR", "beta_err",
+  "meanTPR", "meanFPR", "mean_err", "omega_err")
 rownames(avg_perf) <- c("gmmreg", "(sd)", "cggr", "(sd)")
 ```
 
-```{R}
-varhatdf <- data.frame(
-  cggr = as.numeric(1/result$cggr_varhat),
-  gmmreg = as.numeric(1/result$gmmreg_varhat))
 
-varhatdf |>
-  pivot_longer(c("cggr", "gmmreg"), names_to = "method", values_to = "varhat") |>
-  ggplot(mapping = aes(x = varhat, y = method, fill = method)) +
-  geom_boxplot() +
-  geom_jitter(color="black", size=0.4, alpha=0.9)
+### Compare gamma
+```{r compare gamma, fig.dim=c(10, 3)}
+print(gamma_viz_list(list(
+  GMMReg = g_result$ghat,
+  CGGR = c_result$ghat,
+  Actual = s$mG
+)))
 ```
+
+### Compare beta {.tabset}
+```{r, results="asis", echo = F, fig.dim=c(10, 5)}
+for (i in seq_len(6)) {
+  cat("\n#### comp", i - 1, "\n")
+  cov_lbl <- paste0("component ", i - 1)
+  cat("\n")
+  beta_list <- list(GMMReg = g_result$bhat[,,i],
+                    CGGR = c_result$bhat[,,i],
+                    Actual = s$tB[,,i])
+  print(beta_viz_list(beta_list, cov_lbl, tileborder = T))
+  cat("\n")
+}
+```
+

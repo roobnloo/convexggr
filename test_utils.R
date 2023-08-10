@@ -16,6 +16,8 @@ performance <- function(result, s) {
   }
   stats$beta_err <- beta_err
 
+  stats$mtpr <- sum(result$ghat != 0 & s$mG != 0) / sum(s$mG != 0)
+  stats$mfpr <- sum(result$ghat != 0 & s$mG == 0) / sum(s$mG == 0)
   mean_err <- 0
   for (i in 1:n) {
     mean_err <- mean_err + sum((s$mumx[i, ] -  result$mean(i))^2) / n

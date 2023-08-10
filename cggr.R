@@ -6,7 +6,7 @@ source("cv_cggr_node.R")
 sourceCpp("nodewiseRegression.cpp")
 
 #' @param responses n x d matrix of responses
-#' @param U n x p matrix of covariates
+#' @param covariates n x p matrix of covariates
 #' @param nregmean
 #' @param nlambda
 #' @param asparse SGL mixture penalty

@@ -6,10 +6,12 @@ source("test_utils.R")
 # generate_parameters(50, 50, 150, TRUE)
 
 p <- 50
-q <- 50
+q <- 100
 reparam <- TRUE
+sparse <- TRUE
+sg <- 500
 tbpath <- paste0("data/tb_p", p, "q", q, ".rds")
-mgpath <- paste0("data/mg_p", p, "q", q, "sparse", !reparam, ".rds")
+mgpath <- paste0("data/mg_p", p, "q", q, "sparse", sg, ".rds")
 tb <- readRDS(tbpath)
 mg <- readRDS(mgpath)
 n <- 200
@@ -20,7 +22,7 @@ generate <- function(n, seed) {
 }
 
 failures <- 0
-seeds <- 11:50
+seeds <- 1:10
 ntrials <- length(seeds)
 s_list <- vector(mode = "list", length = ntrials)
 for (i in seq_len(ntrials)) {
@@ -35,10 +37,13 @@ for (i in seq_len(ntrials)) {
 cat("Done generating datasets with", failures, "failures\n")
 
 path <- paste0(
-  "output/p", p, "q", q, "n", n, "reparam", reparam, "trials", ntrials, ".rds")
+  "output/p", p, "q", q, "n", n,
+  "reparam", reparam, "sparse", sg, "trials", ntrials, ".rds")
 
-gmmreg_result_mx <- matrix(nrow = ntrials, ncol = 5)
-cggr_result_mx <- matrix(nrow = ntrials, ncol = 5)
+cat("Output will be saved to", path, "\n")
+
+gmmreg_result_mx <- matrix(nrow = ntrials, ncol = 7)
+cggr_result_mx <- matrix(nrow = ntrials, ncol = 7)
 
 tictoc::tic()
 for (i in seq_along(s_list)) {
@@ -47,21 +52,25 @@ for (i in seq_along(s_list)) {
     verbose = FALSE, parallel = TRUE)
   gmmreg_result_mx[i, ] <- unlist(performance(g_result, s_list[[i]]))
 
-  rm(g_result)
-  gc()
-
   c_result <- cggr(
     s_list[[i]]$X, s_list[[i]]$U, 0.75,
     nregmean = 20,
     verbose = FALSE, parallel = TRUE)
   cggr_result_mx[i, ] <- unlist(performance(c_result, s_list[[i]]))
 
+  saveRDS(
+    list(
+      gmmreg = gmmreg_result_mx,
+      cggr = cggr_result_mx,
+      run = list(s = s_list[[i]], g_result = g_result, c_result = c_result),
+      seeds = seeds),
+    path)
+  cat("Finished round", i, "\n")
+
   rm(c_result)
+  rm(g_result)
   gc()
 
-  saveRDS(
-    list(gmmreg = gmmreg_result_mx, cggr = cggr_result_mx, seeds = seeds), path)
-  cat("Finished round", i, "\n")
 }
 cat("Finished analysis\n")
 tictoc::toc()
@@ -71,7 +80,9 @@ avg_perf <- rbind(apply(gmmreg_result_mx, 2, mean),
                   apply(gmmreg_result_mx, 2, sd),
                   apply(cggr_result_mx, 2, mean),
                   apply(cggr_result_mx, 2, sd))
-colnames(avg_perf) <- c("TPR", "FPR", "beta_err", "mean_err", "omega_err")
+colnames(avg_perf) <- c(
+  "betaTPR", "betaFPR", "beta_err",
+  "meanTPR", "meanFPR", "mean_err", "omega_err")
 rownames(avg_perf) <- c("gmmreg", "(sd)", "cggr", "(sd)")
 
 cat("Average metrics:\n")

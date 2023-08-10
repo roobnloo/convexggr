@@ -93,7 +93,8 @@ double objective(
     double regmean, double lambda, double asparse)
 {
     double quad_loss = residual.squaredNorm() / (2 * residual.rows());
-    double mean_obj = mean_coef.squaredNorm();
+    // double mean_obj = mean_coef.squaredNorm();
+    double mean_obj = mean_coef.lpNorm<1>();
     double lasso_obj = beta.col(0).lpNorm<1>();
     double group_lasso_obj = 0;
     for (int i = 1; i < beta.cols(); ++i)
@@ -246,6 +247,24 @@ NumericVector getRegMeanPath(int nregmean, const MatrixXd &covariates)
     return loglinInterp;
 }
 
+NumericVector getRegMeanPathSparse(
+    int nregmean, const VectorXd &y, const MatrixXd &covariates,
+    double regmeanFactor = 1e-4)
+{
+    if (nregmean <= 0)
+    {
+        stop("Number of mean penalty terms must be strictly positive!");
+    }
+    NumericVector loglinInterp(nregmean);
+    double delta = log(regmeanFactor) / (nregmean - 1);
+    double regmeanMax = (covariates.transpose() * y).lpNorm<Infinity>();
+    for (int i = 0; i < nregmean; ++i)
+    {
+        loglinInterp[i] = regmeanMax * exp(i * delta);
+    }
+    return loglinInterp;
+}
+
 // TODO: This path of lambdas ignores the "gamma" part of the residual.
 NumericVector getLambdaPath(
     NumericVector inlambda, int nlambda, double lambdaFactor,
@@ -307,7 +326,8 @@ RegressionResult nodewiseRegressionInit(
 
     for (int i = 0; i < maxit; ++i)
     {
-        applyRidgeUpdate(gamma, residual, covariates, regmean);
+        // applyRidgeUpdate(gamma, residual, covariates, regmean);
+        applyL1Update(gamma, residual, covariates, regmean);
         applyL1Update(beta.col(0), residual, response, lambda * asparse);
 
         for (int j = 0; j < q; ++j)
@@ -383,7 +403,7 @@ List nodewiseRegression(
     }
 
     if (regmeanPath.size() == 0) // TODO: sort by increasing if nonempty
-        regmeanPath = getRegMeanPath(nregmean, covariates);
+        regmeanPath = getRegMeanPathSparse(nregmean, y, covariates);
     nregmean = regmeanPath.size();
 
     lambdaPath = getLambdaPath(lambdaPath, nlambda, lambdaFactor, y, intxs);

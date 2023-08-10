@@ -21,6 +21,6 @@ RUN pip install radian && \
     installGithub.r ManuelHentschel/vscDebugger
 
 
-RUN install2.r abind RcppEigen sparsegl patchwork tictoc CVXR tables
+RUN install2.r abind RcppEigen sparsegl patchwork tictoc CVXR tables kableExtra
 
 USER root
